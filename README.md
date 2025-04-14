@@ -1,4 +1,4 @@
-# Emotion Agent
+# Emotion Agent Hackathon Project
 
 An AI-powered iOS health companion app that offers emotional support based on real-time physiological data from Apple Watch.
 
@@ -97,4 +97,4 @@ python -m unittest discover tests
 
 ## License
 
-This project is for demonstration purposes only. 
+This project is for demonstration purposes only.
