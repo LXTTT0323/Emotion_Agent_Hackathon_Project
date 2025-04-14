@@ -1,0 +1,48 @@
+{
+  "users": {
+    "user123": {
+      "interactions": [
+        {
+          "timestamp": "2023-04-12T09:30:00.000Z",
+          "text": "I'm feeling really stressed about my presentation tomorrow.",
+          "emotion": "anxious",
+          "suggestion": "When anxiety rises, grounding exercises can help. Try the 5-4-3-2-1 technique (5 things you see, 4 things you feel, etc)."
+        },
+        {
+          "timestamp": "2023-04-12T14:45:00.000Z",
+          "text": "Just finished my workout and feeling good!",
+          "emotion": "happy",
+          "suggestion": "It's great to see you're feeling positive! Keep that energy going with a quick walk outside."
+        }
+      ],
+      "emotion_history": [
+        {
+          "timestamp": "2023-04-12T09:30:00.000Z",
+          "emotion": "anxious"
+        },
+        {
+          "timestamp": "2023-04-12T14:45:00.000Z",
+          "emotion": "happy"
+        }
+      ],
+      "last_active": "2023-04-12T14:45:00.000Z"
+    },
+    "user456": {
+      "interactions": [
+        {
+          "timestamp": "2023-04-11T18:20:00.000Z",
+          "text": "Had a really long day at work, feeling completely drained.",
+          "emotion": "tired",
+          "suggestion": "Your body might need rest. Even a short 20-minute nap can rejuvenate your energy levels."
+        }
+      ],
+      "emotion_history": [
+        {
+          "timestamp": "2023-04-11T18:20:00.000Z",
+          "emotion": "tired"
+        }
+      ],
+      "last_active": "2023-04-11T18:20:00.000Z"
+    }
+  }
+} 

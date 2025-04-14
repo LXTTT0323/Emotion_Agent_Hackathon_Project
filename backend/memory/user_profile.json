@@ -1,0 +1,38 @@
+{
+  "user123": {
+    "user_id": "user123",
+    "personality": {
+      "mbti": "INFJ",
+      "communication_style": "supportive"
+    },
+    "preferences": {
+      "suggestion_tone": "gentle",
+      "likes_creative_suggestions": true,
+      "activity_preferences": ["meditation", "journaling", "breathing_exercises"],
+      "notification_frequency": "medium"
+    },
+    "health_goals": {
+      "reduce_stress": true,
+      "improve_sleep": true,
+      "track_mood": true
+    }
+  },
+  "user456": {
+    "user_id": "user456",
+    "personality": {
+      "mbti": "ENFP",
+      "communication_style": "energetic"
+    },
+    "preferences": {
+      "suggestion_tone": "motivational",
+      "likes_creative_suggestions": true,
+      "activity_preferences": ["physical_activity", "social_connection", "creative_expression"],
+      "notification_frequency": "high"
+    },
+    "health_goals": {
+      "increase_activity": true,
+      "improve_mood": true,
+      "reduce_anxiety": true
+    }
+  }
+} 
