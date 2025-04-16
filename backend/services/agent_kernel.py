@@ -1,6 +1,18 @@
 import os
+import asyncio
 from typing import Dict, Any, List
 import json
+import logging
+
+# Semantic Kernel 导入
+from semantic_kernel import Kernel
+from semantic_kernel.functions import kernel_function
+from semantic_kernel.connectors.ai.open_ai import AzureChatCompletion
+from semantic_kernel.connectors.ai.function_choice_behavior import FunctionChoiceBehavior
+from semantic_kernel.contents.chat_history import ChatHistory
+from semantic_kernel.connectors.ai.open_ai.prompt_execution_settings.azure_chat_prompt_execution_settings import (
+    AzureChatPromptExecutionSettings,
+)
 
 # Imports for tools
 from backend.tools.fetch_emotion_context import analyze_emotion
@@ -9,6 +21,67 @@ from backend.tools.user_profile_tool import get_user_profile
 from backend.tools.intervene import generate_suggestion
 from backend.memory.context_store import ContextStore
 from backend.services.tool_registry import ToolRegistry
+
+# Create emotion analysis plugin
+class EmotionToolsPlugin:
+    def __init__(self, context_store):
+        self.context_store = context_store
+    
+    @kernel_function(
+        name="analyze_emotion",
+        description="分析文本识别用户情绪状态和置信度"
+    )
+    async def analyze_emotion_text(self, text: str) -> str:
+        """分析用户文本中的情绪"""
+        result = await analyze_emotion(text)
+        return json.dumps(result)
+    
+    @kernel_function(
+        name="fetch_health_data",
+        description="获取用户健康数据，包括心率、HRV、睡眠等"
+    )
+    async def get_health_data(self, user_id: str) -> str:
+        """获取用户健康数据"""
+        result = await fetch_health_data(user_id)
+        return json.dumps(result)
+    
+    @kernel_function(
+        name="get_user_profile",
+        description="获取用户档案信息，包括偏好和健康目标"
+    )
+    async def get_user_profile_data(self, user_id: str) -> str:
+        """获取用户档案"""
+        result = await get_user_profile(user_id)
+        return json.dumps(result)
+    
+    @kernel_function(
+        name="generate_suggestion",
+        description="根据情绪和健康数据生成支持性建议"
+    )
+    async def create_suggestion(self, emotion: str, health_data: str) -> str:
+        """生成个性化建议"""
+        health_data_dict = json.loads(health_data) if isinstance(health_data, str) else health_data
+        result = await generate_suggestion(
+            emotion=emotion,
+            confidence=0.9,
+            health_data=health_data_dict,
+            user_profile={}
+        )
+        return json.dumps(result)
+    
+    @kernel_function(
+        name="save_context",
+        description="保存用户互动到上下文存储"
+    )
+    async def save_to_context(self, user_id: str, text: str, emotion: str, suggestion: str) -> str:
+        """保存互动到上下文存储"""
+        await self.context_store.add_interaction(
+            user_id=user_id,
+            text=text,
+            emotion=emotion,
+            suggestion=suggestion
+        )
+        return "保存成功"
 
 # In a real implementation, this would use Semantic Kernel
 # For now, we'll create a class that demonstrates the structure
@@ -30,6 +103,38 @@ class AgentKernel:
         
         # Load prompt templates
         self._load_prompts()
+        
+        # Set up logging
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format="[%(asctime)s - %(name)s:%(lineno)d - %(levelname)s] %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+        
+        # Initialize Semantic Kernel
+        self.kernel = Kernel()
+        
+        # Add Azure OpenAI service (please replace with your API key and deployment name)
+        deployment_name = os.environ.get("AZURE_OPENAI_DEPLOYMENT_NAME", "your_deployment_name")
+        api_key = os.environ.get("AZURE_OPENAI_API_KEY", "your_api_key")
+        base_url = os.environ.get("AZURE_OPENAI_ENDPOINT", "your_base_url")
+        
+        chat_completion = AzureChatCompletion(
+            deployment_name=deployment_name,
+            api_key=api_key,
+            base_url=base_url,
+        )
+        self.kernel.add_service(chat_completion)
+        
+        # Register tool plugins
+        self.kernel.add_plugin(
+            EmotionToolsPlugin(self.context_store),
+            plugin_name="EmotionTools"
+        )
+        
+        # Set execution configuration
+        self.execution_settings = AzureChatPromptExecutionSettings()
+        self.execution_settings.function_choice_behavior = FunctionChoiceBehavior.Auto()
         
     def _load_prompts(self):
         """Load prompt templates from files"""
