@@ -17,6 +17,37 @@
 +------------------+     +-----------------+     +-------------------+
 ```
 
+## Updated Architecture with Semantic Kernel Integration
+
+```
++------------------+     +-----------------+     +-------------------+
+|                  |     |                 |     |                   |
+|  iOS App (Swift) | --> | Backend (FastAPI) --> | Agent Kernel     |
+|                  |     |                 |     |                   |
++------------------+     +-----------------+     +-------------------+
+        |                        |                    |       |
+        v                        v                    |       |
++------------------+     +-----------------+          |       |
+|                  |     |                 |          v       v
+|  Apple HealthKit | --> | Memory System   |    +----------+  +----------+
+|                  |     |                 |    |          |  |          |
++------------------+     +-----------------+    | Kernel   |  | Prompt   |
+                               |                | Service  |  | Service  |
+                               v                |          |  |          |
+                         +-----------------+    +----------+  +----------+
+                         |                 |          |       |
+                         | Tool Registry   | <--------+       |
+                         |                 |                  |
+                         +-----------------+                  v
+                                 |                     +----------+
+                                 v                     |          |
+                         +-----------------+           | AI       |
+                         |                 |           | Config   |
+                         | Analysis Tools  |           |          |
+                         |                 |           +----------+
+                         +-----------------+
+```
+
 ## Data Flow Sequence
 
 1. **User Input**
@@ -34,37 +65,33 @@
    [iOS App] ---> { userId, text, healthData } ---> [FastAPI]
    ```
 
-4. **Emotion Analysis**
+4. **Agent Kernel Processing**
    ```
-   [User Text] ---> [Emotion Analysis Tool] ---> [Detected Emotion + Confidence]
-   ```
-
-5. **Context Retrieval**
-   ```
-   [userId] ---> [Memory System] ---> [User History + Preferences]
+   [Request] ---> [Agent Kernel] ---> [Emotion Analysis] ---> [Health Context] ---> [User Profile]
    ```
 
-6. **Suggestion Generation**
+5. **Semantic Kernel Operation**
    ```
-   [Emotion] + [Health Data] + [User Profile] ---> [Template] ---> [Personalized Suggestion]
+   [Analysis Results] ---> [Kernel Service] ---> [AI Service] ---> [Language Model] ---> [Response]
+   ```
+
+6. **Context Retrieval and Update**
+   ```
+   [Memory System] <--- [Get Recent Emotions] --- [Agent Kernel]
+                    <--- [Store Interaction] ---- [Agent Kernel]
    ```
 
 7. **Response to Frontend**
    ```
-   [Suggestion + Emotion Label] ---> [iOS App] ---> [User Interface]
+   [Generated Response] ---> [iOS App] ---> [User Interface]
    ```
 
-8. **Memory Update**
-   ```
-   [Interaction Data] ---> [Memory Store] ---> [Updated Context]
-   ```
-
-## Key Components Interaction
+## Semantic Kernel Components Interaction
 
 ```
 +-------------+       +------------------+       +-----------------+
 |             |       |                  |       |                 |
-| ContentView | <---> | AgentClient API  | <---> | Agent Router    |
+| AgentKernel | <---> | KernelService    | <---> | OpenAI API      |
 |             |       |                  |       |                 |
 +-------------+       +------------------+       +-----------------+
        ^                       ^                          ^
@@ -72,23 +99,52 @@
        v                       v                          v
 +-------------+       +------------------+       +-----------------+
 |             |       |                  |       |                 |
-|HealthManager| <---> | Health Data API  | <---> | Agent Kernel    |
+| ToolRegistry| <---> | PromptService    | <---> | AIConfig        |
 |             |       |                  |       |                 |
 +-------------+       +------------------+       +-----------------+
-                                                        ^
-                                                        |
-                                                        v
-                                                 +-----------------+
-                                                 |                 |
-                                                 | Tool Registry   |
-                                                 |                 |
-                                                 +-----------------+
-                                                        ^
-                                                        |
-                                                        v
-                                              +---------------------+
-                                              |                     |
-                                              | Individual Tools    |
-                                              |                     |
-                                              +---------------------+
+       ^                       ^                          
+       |                       |                          
+       v                       v                          
++-------------+       +------------------+       
+|             |       |                  |       
+| Analysis    | <---> | Memory System    |       
+| Tools       |       |                  |       
++-------------+       +------------------+       
+```
+
+## Environment and Configuration Flow
+
+```
++---------------+     +----------------+     +-------------------+
+|               |     |                |     |                   |
+| .env File     | --> | AIConfig       | --> | Kernel Service    |
+|               |     |                |     |                   |
++---------------+     +----------------+     +-------------------+
+       |                     |                        |
+       |                     v                        v
+       |              +----------------+     +-------------------+
+       |              |                |     |                   |
+       +------------> | Logging Config | --> | Application       |
+                      |                |     |                   |
+                      +----------------+     +-------------------+
+```
+
+## Key API Endpoints
+
+```
+/agent/analyze (POST)
+  |
+  +---> AgentKernel.analyze()
+          |
+          +---> analyze_emotion()
+          |
+          +---> fetch_health_data()
+          |
+          +---> get_user_profile()
+          |
+          +---> get_recent_emotions()
+          |
+          +---> KernelService.execute_function()
+          |
+          +---> add_interaction()
 ``` 

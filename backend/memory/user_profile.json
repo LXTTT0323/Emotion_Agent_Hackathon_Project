@@ -1,38 +1,84 @@
 {
   "user123": {
     "user_id": "user123",
+    "creation_date": "2023-04-10T08:00:00.000Z",
+    "last_updated": "2023-04-12T14:45:00.000Z",
     "personality": {
       "mbti": "INFJ",
-      "communication_style": "supportive"
+      "communication_style": "supportive",
+      "zodiac_sign": "Pisces",
+      "dominant_traits": ["empathetic", "introspective", "creative"]
     },
     "preferences": {
       "suggestion_tone": "gentle",
       "likes_creative_suggestions": true,
-      "activity_preferences": ["meditation", "journaling", "breathing_exercises"],
-      "notification_frequency": "medium"
+      "activity_preferences": ["meditation", "journaling", "breathing_exercises", "nature walks"],
+      "notification_frequency": "medium",
+      "response_length": "medium",
+      "preferred_time_of_day": {
+        "morning": true,
+        "afternoon": true,
+        "evening": true,
+        "night": false
+      }
+    },
+    "interests": {
+      "categories": ["wellness", "mindfulness", "personal growth"],
+      "specific_activities": ["yoga", "reading", "cooking"]
     },
     "health_goals": {
       "reduce_stress": true,
       "improve_sleep": true,
-      "track_mood": true
+      "track_mood": true,
+      "increase_activity": false,
+      "improve_nutrition": false
+    },
+    "communication_preferences": {
+      "metaphors": true,
+      "direct_advice": true,
+      "scientific_explanations": false,
+      "inspirational_quotes": true
     }
   },
   "user456": {
     "user_id": "user456",
+    "creation_date": "2023-04-08T10:20:00.000Z",
+    "last_updated": "2023-04-11T18:20:00.000Z",
     "personality": {
       "mbti": "ENFP",
-      "communication_style": "energetic"
+      "communication_style": "energetic",
+      "zodiac_sign": "Leo",
+      "dominant_traits": ["enthusiastic", "creative", "social"]
     },
     "preferences": {
       "suggestion_tone": "motivational",
       "likes_creative_suggestions": true,
-      "activity_preferences": ["physical_activity", "social_connection", "creative_expression"],
-      "notification_frequency": "high"
+      "activity_preferences": ["physical_activity", "social_connection", "creative_expression", "outdoor activities"],
+      "notification_frequency": "high",
+      "response_length": "long",
+      "preferred_time_of_day": {
+        "morning": true,
+        "afternoon": true,
+        "evening": true,
+        "night": true
+      }
+    },
+    "interests": {
+      "categories": ["fitness", "art", "social activities"],
+      "specific_activities": ["running", "painting", "group classes"]
     },
     "health_goals": {
       "increase_activity": true,
       "improve_mood": true,
-      "reduce_anxiety": true
+      "reduce_anxiety": true,
+      "improve_sleep": false,
+      "improve_nutrition": true
+    },
+    "communication_preferences": {
+      "metaphors": true,
+      "direct_advice": false,
+      "scientific_explanations": false,
+      "inspirational_quotes": true
     }
   }
 } 

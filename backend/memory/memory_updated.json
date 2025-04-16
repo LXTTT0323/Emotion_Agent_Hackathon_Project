@@ -84,6 +84,22 @@
             "text": "Your previous advice really helped with our conversation",
             "timestamp": "2023-06-18T12:18:12.443Z"
           }
+        },
+        {
+          "timestamp": "2025-04-16T15:55:50.800720",
+          "text": "我即将参加一个重要的演讲比赛，需要做好准备",
+          "emotion": "determined",
+          "confidence": 0.87,
+          "suggestion": "提前准备并进行多次练习会增强你的信心和表现",
+          "metadata": {
+            "importance": "high",
+            "type": "preparation"
+          },
+          "feedback": {
+            "timestamp": "2025-04-16T15:55:50.801719",
+            "rating": 4,
+            "text": "这个建议很有帮助，但我还需要更多具体的演讲技巧"
+          }
         }
       ],
       "emotion_history": [
@@ -91,39 +107,71 @@
           "timestamp": "2023-06-15T08:34:12.451Z",
           "emotion": "anxious",
           "confidence": 0.87,
-          "context": ["stressed", "presentation", "work", "upcoming"]
+          "context": [
+            "stressed",
+            "presentation",
+            "work",
+            "upcoming"
+          ]
         },
         {
           "timestamp": "2023-06-15T16:48:32.217Z",
           "emotion": "happy",
           "confidence": 0.95,
-          "context": ["finished", "presentation", "really", "well", "complimented"]
+          "context": [
+            "finished",
+            "presentation",
+            "really",
+            "well",
+            "complimented"
+          ]
         },
         {
           "timestamp": "2023-06-16T07:12:55.324Z",
           "emotion": "tired",
           "confidence": 0.82,
-          "context": ["sleep", "night", "tired", "today"]
+          "context": [
+            "sleep",
+            "night",
+            "tired",
+            "today"
+          ]
         },
         {
           "timestamp": "2023-06-17T18:30:22.105Z",
           "emotion": "sad",
           "confidence": 0.78,
-          "context": ["argument", "partner", "know"]
+          "context": [
+            "argument",
+            "partner",
+            "know"
+          ]
         },
         {
           "timestamp": "2023-06-18T12:15:36.771Z",
           "emotion": "calm",
           "confidence": 0.91,
-          "context": ["talked", "through", "better", "made"]
+          "context": [
+            "talked",
+            "through",
+            "better",
+            "made"
+          ]
+        },
+        {
+          "timestamp": "2025-04-16T15:55:50.800720",
+          "emotion": "determined",
+          "confidence": 0.87,
+          "context": "我即将参加一个重要的演讲比赛，需要做好准备"
         }
       ],
-      "last_active": "2023-06-18T12:18:12.443Z",
+      "last_active": "2025-04-16T15:55:50.800720",
       "session_count": 4,
       "stats": {
         "most_frequent_emotion": "anxious",
         "most_frequent_time": "morning",
-        "total_interactions": 5
+        "total_interactions": 6,
+        "average_feedback": 4.4
       }
     },
     "user456": {
@@ -183,19 +231,37 @@
           "timestamp": "2023-06-12T19:23:41.128Z",
           "emotion": "excited",
           "confidence": 0.89,
-          "context": ["promotion", "work", "excited"]
+          "context": [
+            "promotion",
+            "work",
+            "excited"
+          ]
         },
         {
           "timestamp": "2023-06-14T07:45:12.387Z",
           "emotion": "anxious",
           "confidence": 0.76,
-          "context": ["nervous", "starting", "role", "next", "week"]
+          "context": [
+            "nervous",
+            "starting",
+            "role",
+            "next",
+            "week"
+          ]
         },
         {
           "timestamp": "2023-06-16T12:34:51.223Z",
           "emotion": "hopeful",
           "confidence": 0.82,
-          "context": ["attending", "workshop", "leadership", "skills", "today", "hope", "well"]
+          "context": [
+            "attending",
+            "workshop",
+            "leadership",
+            "skills",
+            "today",
+            "hope",
+            "well"
+          ]
         }
       ],
       "last_active": "2023-06-16T12:34:51.223Z",
@@ -208,5 +274,5 @@
     }
   },
   "version": "2.0",
-  "last_updated": "2023-06-18T12:18:12.443Z"
-} 
+  "last_updated": "2025-04-16T15:55:50.802719"
+}
