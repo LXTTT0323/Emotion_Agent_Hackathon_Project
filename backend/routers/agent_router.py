@@ -2,15 +2,32 @@
 # -*- coding: utf-8 -*-
 
 import logging
+import os
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional, List
+import datetime
 
-from backend.services.agent_kernel import AgentKernel
+# 根据环境变量决定使用哪个版本的 AgentKernel
+USE_MOCK = os.getenv("USE_MOCK_RESPONSES", "0") == "1"
 
-# 设置日志记录器
-logger = logging.getLogger(__name__)
+if USE_MOCK:
+    # 使用模拟版本
+    from backend.services.mock_agent_kernel import MockAgentKernel as AgentKernel
+    logger = logging.getLogger(__name__)
+    logger.info("使用模拟版本的 AgentKernel")
+else:
+    # 使用真实版本（依赖 Semantic Kernel）
+    try:
+        from backend.services.agent_kernel import AgentKernel
+        logger = logging.getLogger(__name__)
+        logger.info("使用真实版本的 AgentKernel（Semantic Kernel）")
+    except ImportError as e:
+        # 如果导入失败，回退到模拟版本
+        logger = logging.getLogger(__name__)
+        logger.warning(f"导入真实 AgentKernel 失败: {str(e)}. 回退到模拟版本。")
+        from backend.services.mock_agent_kernel import MockAgentKernel as AgentKernel
 
 router = APIRouter(
     prefix="/agent",
@@ -72,20 +89,4 @@ async def analyze_input(request: AnalysisRequest):
         
     except Exception as e:
         logger.error(f"分析过程中出错: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
-
-@router.exception_handler(HTTPException)
-async def http_exception_handler(request: Request, exc: HTTPException):
-    """自定义HTTP异常处理"""
-    import datetime
-    
-    error_response = ErrorResponse(
-        detail=exc.detail,
-        error_type="HTTPException",
-        timestamp=datetime.datetime.now().isoformat()
-    )
-    
-    return JSONResponse(
-        status_code=exc.status_code,
-        content=error_response.dict()
-    ) 
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}") 
