@@ -115,9 +115,13 @@ class AgentKernel:
         self.kernel = Kernel()
         
         # Add Azure OpenAI service (please replace with your API key and deployment name)
-        deployment_name = os.environ.get("AZURE_OPENAI_DEPLOYMENT_NAME", "your_deployment_name")
-        api_key = os.environ.get("AZURE_OPENAI_API_KEY", "your_api_key")
-        base_url = os.environ.get("AZURE_OPENAI_ENDPOINT", "your_base_url")
+        deployment_name = os.environ.get("AZURE_OPENAI_DEPLOYMENT_NAME")
+        api_key = os.environ.get("AZURE_OPENAI_API_KEY")
+        base_url = os.environ.get("AZURE_OPENAI_ENDPOINT")
+        
+        # 确保所有必要的环境变量都已设置
+        if not deployment_name or not api_key or not base_url:
+            raise ValueError("请确保设置了AZURE_OPENAI_DEPLOYMENT_NAME、AZURE_OPENAI_API_KEY和AZURE_OPENAI_ENDPOINT环境变量")
         
         chat_completion = AzureChatCompletion(
             deployment_name=deployment_name,

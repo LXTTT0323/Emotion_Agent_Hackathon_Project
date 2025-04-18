@@ -43,6 +43,133 @@
         }
       ],
       "last_active": "2023-04-11T18:20:00.000Z"
+    },
+    "string": {
+      "interactions": [
+        {
+          "timestamp": "2025-04-17T21:25:59.315598",
+          "text": "string",
+          "emotion": "neutral",
+          "suggestion": "This might be a good time for reflection. How about a short journaling session?"
+        },
+        {
+          "timestamp": "2025-04-17T21:27:23.788583",
+          "text": "string",
+          "emotion": "neutral",
+          "suggestion": "Your balanced state is a good time to check in with your goals and priorities."
+        },
+        {
+          "timestamp": "2025-04-17T21:27:24.715729",
+          "text": "string",
+          "emotion": "neutral",
+          "suggestion": "This might be a good time for reflection. How about a short journaling session?"
+        },
+        {
+          "timestamp": "2025-04-17T21:27:26.223143",
+          "text": "string",
+          "emotion": "neutral",
+          "suggestion": "This might be a good time for reflection. How about a short journaling session?"
+        },
+        {
+          "timestamp": "2025-04-17T21:27:26.496130",
+          "text": "string",
+          "emotion": "neutral",
+          "suggestion": "This might be a good time for reflection. How about a short journaling session?"
+        },
+        {
+          "timestamp": "2025-04-17T21:27:26.687554",
+          "text": "string",
+          "emotion": "neutral",
+          "suggestion": "This might be a good time for reflection. How about a short journaling session?"
+        },
+        {
+          "timestamp": "2025-04-17T21:27:26.845793",
+          "text": "string",
+          "emotion": "neutral",
+          "suggestion": "Your balanced state is a good time to check in with your goals and priorities."
+        },
+        {
+          "timestamp": "2025-04-17T21:27:26.988109",
+          "text": "string",
+          "emotion": "neutral",
+          "suggestion": "Your balanced state is a good time to check in with your goals and priorities."
+        },
+        {
+          "timestamp": "2025-04-17T21:27:30.297426",
+          "text": "stng",
+          "emotion": "neutral",
+          "suggestion": "Your balanced state is a good time to check in with your goals and priorities."
+        },
+        {
+          "timestamp": "2025-04-17T21:27:30.866407",
+          "text": "stng",
+          "emotion": "neutral",
+          "suggestion": "This might be a good time for reflection. How about a short journaling session?"
+        },
+        {
+          "timestamp": "2025-04-17T21:27:31.290862",
+          "text": "stng",
+          "emotion": "neutral",
+          "suggestion": "This might be a good time for reflection. How about a short journaling session?"
+        },
+        {
+          "timestamp": "2025-04-17T21:27:37.694238",
+          "text": "\u4f60\u597d\u554a",
+          "emotion": "neutral",
+          "suggestion": "This might be a good time for reflection. How about a short journaling session?"
+        }
+      ],
+      "emotion_history": [
+        {
+          "timestamp": "2025-04-17T21:25:59.315609",
+          "emotion": "neutral"
+        },
+        {
+          "timestamp": "2025-04-17T21:27:23.788600",
+          "emotion": "neutral"
+        },
+        {
+          "timestamp": "2025-04-17T21:27:24.715738",
+          "emotion": "neutral"
+        },
+        {
+          "timestamp": "2025-04-17T21:27:26.223158",
+          "emotion": "neutral"
+        },
+        {
+          "timestamp": "2025-04-17T21:27:26.496141",
+          "emotion": "neutral"
+        },
+        {
+          "timestamp": "2025-04-17T21:27:26.687564",
+          "emotion": "neutral"
+        },
+        {
+          "timestamp": "2025-04-17T21:27:26.845803",
+          "emotion": "neutral"
+        },
+        {
+          "timestamp": "2025-04-17T21:27:26.988118",
+          "emotion": "neutral"
+        },
+        {
+          "timestamp": "2025-04-17T21:27:30.297435",
+          "emotion": "neutral"
+        },
+        {
+          "timestamp": "2025-04-17T21:27:30.866416",
+          "emotion": "neutral"
+        },
+        {
+          "timestamp": "2025-04-17T21:27:31.290870",
+          "emotion": "neutral"
+        },
+        {
+          "timestamp": "2025-04-17T21:27:37.694249",
+          "emotion": "neutral"
+        }
+      ],
+      "last_active": "2025-04-17T21:27:37.694252"
     }
   }
-} 
+}

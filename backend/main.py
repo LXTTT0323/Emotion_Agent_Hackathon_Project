@@ -2,6 +2,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import sys
 import os
+from dotenv import load_dotenv
+
+# 加载.env文件
+load_dotenv()
 
 # Add the parent directory to the path so we can import from the local modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
