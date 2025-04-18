@@ -1,45 +1,34 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Dict, Any, Optional
-from services.agent_kernel import AgentKernel
+from typing import List
+from ..services.agent_kernel import AgentKernel
 
 router = APIRouter(
     prefix="/agent",
     tags=["agent"],
 )
 
-# Input model for analyze endpoint
-class AnalysisRequest(BaseModel):
-    user_id: str
-    text: str
-    health_data: Optional[Dict[str, Any]] = None
+# 输入模型
+class ChatRequest(BaseModel):
+    message: str
 
-# Response model 
-class AnalysisResponse(BaseModel):
-    suggestion: str
-    emotion: str
-    confidence: float
-    
-# Singleton instance of AgentKernel
-agent_kernel = AgentKernel()
+# 响应模型
+class ChatResponse(BaseModel):
+    response: str
 
-@router.post("/analyze", response_model=AnalysisResponse)
-async def analyze_input(request: AnalysisRequest):
+# 创建 AgentKernel 实例
+agent_kernel = AgentKernel(mode="default")
+
+@router.post("/chat", response_model=ChatResponse)
+async def chat_with_agent(request: ChatRequest):
     """
-    Analyze user input and health data to generate an emotionally supportive response.
+    与 AI 进行对话
     
-    - Input: User text and optional health metrics from Apple Watch
-    - Process: Emotion analysis, context retrieval, personalized suggestion
-    - Output: Agent response with suggestion
+    - 输入: 用户消息
+    - 输出: AI 回复
     """
     try:
-        # Use the agent_kernel to analyze the input
-        result = await agent_kernel.analyze(
-            user_id=request.user_id,
-            text=request.text,
-            health_data=request.health_data
-        )
-        
-        return result
+        response = await agent_kernel.chat(request.message)
+        return {"response": response}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"对话失败: {str(e)}") 

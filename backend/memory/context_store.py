@@ -93,4 +93,30 @@ class ContextStore:
         return {
             **self.memory["users"][user_id],
             "has_context": True
-        } 
+        }
+        
+    async def get_recent_emotions(self, user_id: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """获取用户最近的情绪记录
+        
+        Args:
+            user_id: 用户ID
+            limit: 返回的记录数量限制
+            
+        Returns:
+            包含时间戳、情绪和置信度的记录列表
+        """
+        if user_id not in self.memory["users"]:
+            return []
+            
+        # 获取情绪历史
+        emotion_history = self.memory["users"][user_id].get("emotion_history", [])
+        
+        # 返回最近的n条记录
+        recent_emotions = emotion_history[-limit:] if emotion_history else []
+        
+        # 确保每条记录都有置信度字段
+        for emotion in recent_emotions:
+            if "confidence" not in emotion:
+                emotion["confidence"] = 0.8  # 默认置信度
+                
+        return recent_emotions 

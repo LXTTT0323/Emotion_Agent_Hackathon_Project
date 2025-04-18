@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 import sys
 import os
 from dotenv import load_dotenv
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 
 # 加载.env文件
 load_dotenv()
@@ -30,9 +32,16 @@ app.add_middleware(
 app.include_router(agent_router.router)
 app.include_router(health_router.router)
 
+# 创建静态文件目录（如果不存在）
+static_dir = Path(__file__).parent / "static"
+static_dir.mkdir(exist_ok=True)
+
+# 挂载静态文件目录
+app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
 @app.get("/")
 async def root():
-    return {"message": "Welcome to Emotion Agent API"}
+    return {"message": "Welcome to Emotion Agent API", "demo_url": "/static/demo.html"}
 
 if __name__ == "__main__":
     import uvicorn

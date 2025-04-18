@@ -13,6 +13,12 @@
           "text": "Just finished my workout and feeling good!",
           "emotion": "happy",
           "suggestion": "It's great to see you're feeling positive! Keep that energy going with a quick walk outside."
+        },
+        {
+          "timestamp": "2025-04-17T21:50:23.239120",
+          "text": "I'm feeling a bit down today, things aren't going well for me.",
+          "emotion": "sad",
+          "suggestion": "When feeling sad, gentle self-care matters. How about a warm drink and some calming music?"
         }
       ],
       "emotion_history": [
@@ -23,9 +29,13 @@
         {
           "timestamp": "2023-04-12T14:45:00.000Z",
           "emotion": "happy"
+        },
+        {
+          "timestamp": "2025-04-17T21:50:23.239146",
+          "emotion": "sad"
         }
       ],
-      "last_active": "2023-04-12T14:45:00.000Z"
+      "last_active": "2025-04-17T21:50:23.239150"
     },
     "user456": {
       "interactions": [
