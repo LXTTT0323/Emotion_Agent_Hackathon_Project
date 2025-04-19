@@ -1,112 +1,399 @@
-import asyncio
-import logging
 import os
-from pathlib import Path
+import json
+from openai import AzureOpenAI
+from typing import List, Dict, Any, Tuple, Optional
+import asyncio
+import random
 from dotenv import load_dotenv
-from semantic_kernel import Kernel
-from semantic_kernel.connectors.ai.open_ai import AzureChatCompletion
-from semantic_kernel.connectors.ai.function_choice_behavior import FunctionChoiceBehavior
-from semantic_kernel.connectors.ai.chat_completion_client_base import ChatCompletionClientBase
-from semantic_kernel.contents.chat_history import ChatHistory
-from semantic_kernel.functions.kernel_arguments import KernelArguments
-from semantic_kernel.connectors.ai.open_ai.prompt_execution_settings.azure_chat_prompt_execution_settings import (
-    AzureChatPromptExecutionSettings,
-)
 
 # 加载环境变量
-env_path = Path(__file__).parent.parent / '.env'
-load_dotenv(env_path)
+load_dotenv()
+
+# 从环境变量获取Azure OpenAI配置
+endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+subscription_key = os.getenv("AZURE_OPENAI_API_KEY")
+deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4o")
+api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview")
 
 class AgentKernel:
-    def __init__(self, mode: str = "default"):
+    def __init__(self, mode="default"):
         """
         初始化 AgentKernel
         
         Args:
-            mode: 运行模式，'default'或'mock'
+            mode: 运行模式 (default 或 mock)
         """
         self.mode = mode
-        self.kernel = Kernel()
-        
-        # 设置日志
-        logging.basicConfig(
-            format="[%(asctime)s - %(name)s:%(lineno)d - %(levelname)s] %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
+        self.client = AzureOpenAI(
+            api_version=api_version,
+            azure_endpoint=endpoint,
+            api_key=subscription_key,
         )
-        logging.getLogger("kernel").setLevel(logging.DEBUG)
-        
-        # 从环境变量获取 Azure OpenAI 配置
-        deployment_name = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
-        api_key = os.getenv("AZURE_OPENAI_API_KEY")
-        endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-        api_version = os.getenv("AZURE_OPENAI_API_VERSION")
-        
-        # 打印配置信息（调试用）
-        print(f"部署名称: {deployment_name}")
-        print(f"端点: {endpoint}")
-        print(f"API 密钥长度: {len(api_key) if api_key else 0}")
-        print(f"API 版本: {api_version}")
-        if not all([deployment_name, api_key, endpoint]):
-            raise ValueError("请设置以下环境变量：AZURE_OPENAI_DEPLOYMENT_NAME, AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT")
-        
-        # 添加 Azure OpenAI 服务
-        self.chat_completion = AzureChatCompletion(
-            deployment_name=deployment_name,
-            endpoint=endpoint,
-            api_key=api_key,
-            api_version=api_version
-        )
-
-        
-        self.kernel.add_service(self.chat_completion)
-        
-        # 设置执行配置
-        self.execution_settings = AzureChatPromptExecutionSettings()
-        self.execution_settings.function_choice_behavior = FunctionChoiceBehavior.Auto()
-        
-        # 初始化聊天历史
-        self.chat_history = ChatHistory()
+        # 存储用户对话历史的字典
+        self.conversation_history = {}
     
-    async def chat(self, user_input: str) -> str:
+    def get_user_health_data(self, user_id: str, emotion: Optional[str] = None, confidence: Optional[float] = None) -> Dict[str, Any]:
         """
-        与 AI 进行对话
+        获取用户健康数据
         
         Args:
-            user_input: 用户输入的消息
+            user_id: 用户ID
+            emotion: 用户情绪（P=积极, N=中性, D=消极）
+            confidence: 情绪置信度
             
         Returns:
-            AI 的回复
+            用户健康数据，包含情绪状态和置信度
         """
-        # 添加用户消息到历史
-        self.chat_history.add_user_message(user_input)
+        if emotion and confidence:
+            # 使用传入的情绪数据
+            return {
+                "user_id": user_id,
+                "status": emotion,
+                "confidence": confidence
+            }
+        elif self.mode == "mock":
+            # 模拟健康数据
+            statuses = ["P", "N", "D"]  # Positive, Neutral, Depressed
+            status = random.choice(statuses)
+            confidence = random.uniform(0.4, 0.95)
+            
+            return {
+                "user_id": user_id,
+                "status": status,
+                "confidence": confidence
+            }
+        else:
+            # 实际环境应当调用相关API获取数据
+            # 这里暂时使用模拟数据
+            statuses = ["P", "N", "D"]
+            status = random.choice(statuses)
+            confidence = random.uniform(0.4, 0.95)
+            
+            return {
+                "user_id": user_id,
+                "status": status,
+                "confidence": confidence
+            }
+    
+    def get_user_context_from_memory(self, user_id: str, query: str = "") -> List[Dict[str, Any]]:
+        """
+        从记忆系统中获取用户上下文
         
-        # 获取 AI 回复
-        result = await self.chat_completion.get_chat_message_content(
-            chat_history=self.chat_history,
-            settings=self.execution_settings,
-            kernel=self.kernel,
+        Args:
+            user_id: 用户ID
+            query: 用户查询
+            
+        Returns:
+            相关记忆列表
+        """
+        # 获取记忆数据
+        memories = self.retrieve_memory(user_id, query)
+        return memories["memories"]
+    
+    # 模拟记忆检索API
+    def retrieve_memory(self, user_id: str, query: str = "", top_k: int = 3) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        模拟从记忆系统检索相关记忆
+        
+        Args:
+            user_id: 用户ID
+            query: 用户查询
+            top_k: 返回的记忆数量
+            
+        Returns:
+            包含相关记忆的字典
+        """
+        # 模拟记忆数据
+        if self.mode == "mock":
+            mock_memories = {
+                "memories": [
+                    {
+                        "summary": "User said they dislike rainy days last week",
+                        "embedding_source": "2024-04-12 19:22:31 Chat content",
+                        "relevance": 0.93
+                    },
+                    {
+                        "summary": "User mentioned they want someone to be with them when they're under pressure",
+                        "embedding_source": "2024-03-30",
+                        "relevance": 0.89
+                    },
+                    {
+                        "summary": "User said they've been very busy at work recently, often working overtime until late",
+                        "embedding_source": "2024-04-10 20:15:45 Chat content",
+                        "relevance": 0.85
+                    }
+                ]
+            }
+            return mock_memories
+        else:
+            # 实际环境应当调用相关API获取数据
+            # 这里暂时使用模拟数据
+            mock_memories = {
+                "memories": [
+                    {
+                        "summary": "User said they dislike rainy days last week",
+                        "embedding_source": "2024-04-12 19:22:31 Chat content",
+                        "relevance": 0.93
+                    },
+                    {
+                        "summary": "User mentioned they want someone to be with them when they're under pressure",
+                        "embedding_source": "2024-03-30",
+                        "relevance": 0.89
+                    },
+                    {
+                        "summary": "User said they've been very busy at work recently, often working overtime until late",
+                        "embedding_source": "2024-04-10 20:15:45 Chat content",
+                        "relevance": 0.85
+                    }
+                ]
+            }
+            return mock_memories
+    
+    def build_prompt_with_memories_and_history(self, user_id: str, query: str = "", 
+                                              emotion: Optional[str] = None, 
+                                              confidence: Optional[float] = None,
+                                              time_of_day: Optional[str] = None,
+                                              reason: Optional[str] = None) -> List[Dict[str, str]]:
+        """
+        构建包含记忆上下文和对话历史的prompt
+        
+        Args:
+            user_id: 用户ID
+            query: 用户当前查询
+            emotion: 用户情绪状态 (P=积极, N=中性, D=消极)
+            confidence: 情绪置信度
+            time_of_day: 一天中的时间段(morning, afternoon, evening, night)
+            reason: 特殊原因描述
+            
+        Returns:
+            带有记忆上下文和对话历史的消息列表
+        """
+        # 获取用户健康数据
+        health_data = self.get_user_health_data(user_id, emotion, confidence)
+        
+        # 获取用户上下文
+        user_context = self.get_user_context_from_memory(user_id, query)
+        
+        # 构建系统提示，包含记忆信息
+        system_content = "You are an emotional support assistant, providing warmth and understanding. Here is some relevant information about the user to consider in your response:"
+        
+        # 添加用户记忆信息
+        for memory in user_context:
+            system_content += f"\n- {memory['summary']} ({memory['embedding_source']})"
+        
+        # 根据健康数据调整提示
+        if health_data["confidence"] > 0.6:
+            status = health_data["status"]
+            if status == "P":
+                system_content += "\n\nThe user seems to be in a positive mood. You can be cheerful and encouraging."
+            elif status == "N":
+                system_content += "\n\nThe user seems to be in a neutral mood. Be empathetic and provide support."
+            elif status == "D":
+                system_content += "\n\nThe user may be feeling depressed. Show extra care, be supportive, and suggest professional help if necessary."
+        
+        # 添加时间信息
+        if time_of_day:
+            system_content += f"\n\nThe current time of day is: {time_of_day}."
+        
+        # 添加特殊原因信息
+        if reason:
+            system_content += f"\n\nSpecial context: {reason}"
+        
+        system_content += "\n\nPlease provide personalized emotional support based on these memories and conversation history. Maintain consistency and coherence as if you're old friends."
+        
+        # 构建消息列表，包含系统消息
+        messages = [
+            {
+                "role": "system",
+                "content": system_content
+            }
+        ]
+        
+        # 添加历史对话（如果有）
+        if user_id in self.conversation_history:
+            messages.extend(self.conversation_history[user_id])
+        
+        # 添加当前用户查询（如果有）
+        if query:
+            messages.append({
+                "role": "user",
+                "content": query
+            })
+        
+        return messages
+    
+    async def chat(self, query: str, user_id: str = "default_user", 
+                  emotion: Optional[str] = None, confidence: Optional[float] = None) -> str:
+        """
+        处理用户查询并返回带有记忆上下文和对话历史的回复
+        
+        Args:
+            query: 用户查询
+            user_id: 用户ID
+            emotion: 用户情绪状态
+            confidence: 情绪置信度
+            
+        Returns:
+            助手的回复
+        """
+        # 确保用户在历史记录中有条目
+        if user_id not in self.conversation_history:
+            self.conversation_history[user_id] = []
+        
+        # 构建包含记忆和历史的消息
+        messages = self.build_prompt_with_memories_and_history(
+            user_id=user_id, 
+            query=query,
+            emotion=emotion,
+            confidence=confidence
         )
         
-        # 添加 AI 回复到历史
-        self.chat_history.add_message(result)
+        # 记录发送的消息
+        print(f"向模型发送的消息: {json.dumps(messages, ensure_ascii=False, indent=2)}")
         
-        return str(result)
+        # 使用非流式响应
+        response = await asyncio.to_thread(
+            self.client.chat.completions.create,
+            stream=False,  # 使用非流式响应
+            messages=messages,
+            max_tokens=4096,
+            temperature=0.7,
+            top_p=1.0,
+            model=deployment
+        )
+        
+        # 获取响应内容
+        full_response = response.choices[0].message.content
+        
+        # 更新对话历史
+        if query:  # 只有在有用户输入的情况下才更新对话历史
+            self.conversation_history[user_id].append({"role": "user", "content": query})
+            self.conversation_history[user_id].append({"role": "assistant", "content": full_response})
+            
+            # 如果对话历史太长，可以进行截断以避免超出模型的上下文限制
+            # 保留最近的10轮对话（20条消息）
+            if len(self.conversation_history[user_id]) > 20:
+                self.conversation_history[user_id] = self.conversation_history[user_id][-20:]
+        
+        return full_response
+    
+    async def followup(self, user_id: str = "default_user", 
+                     emotion: Optional[str] = None, 
+                     confidence: Optional[float] = None,
+                     time_of_day: Optional[str] = None,
+                     reason: Optional[str] = None) -> str:
+        """
+        处理没有用户查询的情况，主动发起对话
+        
+        Args:
+            user_id: 用户ID
+            emotion: 用户情绪状态
+            confidence: 情绪置信度
+            time_of_day: 一天中的时间段
+            reason: 特殊原因描述
+            
+        Returns:
+            助手的主动回复
+        """
+        # 确保用户在历史记录中有条目
+        if user_id not in self.conversation_history:
+            self.conversation_history[user_id] = []
+        
+        # 构建包含记忆和历史的消息，没有用户查询
+        messages = self.build_prompt_with_memories_and_history(
+            user_id=user_id,
+            emotion=emotion,
+            confidence=confidence,
+            time_of_day=time_of_day,
+            reason=reason
+        )
+        
+        # 添加一个指示性提示
+        followup_instruction = {
+            "role": "user",
+            "content": "Please initiate a conversation with me based on the context provided. Be supportive and considerate."
+        }
+        messages.append(followup_instruction)
+        
+        # 记录发送的消息
+        print(f"向模型发送的消息: {json.dumps(messages, ensure_ascii=False, indent=2)}")
+        
+        # 使用非流式响应
+        response = await asyncio.to_thread(
+            self.client.chat.completions.create,
+            stream=False,  # 使用非流式响应
+            messages=messages,
+            max_tokens=4096,
+            temperature=0.7,
+            top_p=1.0,
+            model=deployment
+        )
+        
+        # 获取响应内容
+        full_response = response.choices[0].message.content
+        
+        # 更新对话历史
+        self.conversation_history[user_id].append({"role": "assistant", "content": full_response})
+        
+        # 如果对话历史太长，可以进行截断以避免超出模型的上下文限制
+        if len(self.conversation_history[user_id]) > 20:
+            self.conversation_history[user_id] = self.conversation_history[user_id][-20:]
+        
+        return full_response
+    
+    def start_conversation(self, user_id: str):
+        """
+        开始一个新的对话，清除之前的对话历史
+        
+        Args:
+            user_id: 用户ID
+        """
+        self.conversation_history[user_id] = []
+        print(f"已为用户 {user_id} 开始新对话")
+
+    def get_conversation_history(self, user_id: str) -> List[Dict[str, str]]:
+        """
+        获取指定用户的对话历史
+        
+        Args:
+            user_id: 用户ID
+            
+        Returns:
+            用户的对话历史
+        """
+        if user_id in self.conversation_history:
+            return self.conversation_history[user_id]
+        return []
+
 
 # 示例用法
-async def example_usage():
-    """示例用法：展示如何使用 AgentKernel 进行对话"""
-    # 初始化 AgentKernel
-    agent = AgentKernel(mode="default")
-    
-    # 示例对话
-    print("开始对话（输入 'exit' 退出）")
-    while True:
-        user_input = input("用户 > ")
-        if user_input.lower() == "exit":
-            break
-            
-        response = await agent.chat(user_input)
-        print(f"AI > {response}")
-
 if __name__ == "__main__":
-    asyncio.run(example_usage())
+    async def test_agent():
+        agent = AgentKernel(mode="mock")
+        user_id = "user_123"
+        
+        # 清除之前的对话历史，开始新对话
+        agent.start_conversation(user_id)
+        
+        # 测试 followup（主动发起）
+        print("测试 followup：")
+        followup_response = await agent.followup(
+            user_id=user_id,
+            emotion="D",
+            confidence=0.85,
+            time_of_day="evening",
+            reason="User seems to be sleepy and has been silent for a while"
+        )
+        print(f"AI主动发起: {followup_response}")
+        
+        # 测试 chat（回复查询）
+        print("\n测试 chat：")
+        chat_response = await agent.chat(
+            query="I'm feeling a bit down today",
+            user_id=user_id,
+            emotion="N",
+            confidence=0.78
+        )
+        print(f"AI回复: {chat_response}")
+    
+    asyncio.run(test_agent())
