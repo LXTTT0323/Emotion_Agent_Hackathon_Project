@@ -5,6 +5,15 @@ from typing import List, Dict, Any, Tuple, Optional
 import asyncio
 import random
 from dotenv import load_dotenv
+import logging
+
+# 导入CosmosMemoryStore
+from backend.memory.cosmos_memory_store import CosmosMemoryStore
+
+# 设置日志
+logging.basicConfig(level=logging.INFO, 
+                   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # 加载环境变量
 load_dotenv()
@@ -24,11 +33,21 @@ class AgentKernel:
             mode: 运行模式 (default 或 mock)
         """
         self.mode = mode
-        self.client = AzureOpenAI(
-            api_version=api_version,
-            azure_endpoint=endpoint,
-            api_key=subscription_key,
-        )
+        
+        # 初始化 CosmosMemoryStore
+        self.memory_store = CosmosMemoryStore()
+        
+        # 初始化 OpenAI 客户端
+        try:
+            self.client = AzureOpenAI(
+                api_version=api_version,
+                azure_endpoint=endpoint,
+                api_key=subscription_key,
+            )
+        except Exception as e:
+            logger.error(f"初始化 OpenAI 客户端时出错: {str(e)}")
+            self.client = None
+        
         # 存储用户对话历史的字典
         self.conversation_history = {}
     
@@ -90,10 +109,10 @@ class AgentKernel:
         memories = self.retrieve_memory(user_id, query)
         return memories["memories"]
     
-    # 模拟记忆检索API
+    # 使用 CosmosMemoryStore 检索记忆
     def retrieve_memory(self, user_id: str, query: str = "", top_k: int = 3) -> Dict[str, List[Dict[str, Any]]]:
         """
-        模拟从记忆系统检索相关记忆
+        从记忆系统检索相关记忆
         
         Args:
             user_id: 用户ID
@@ -103,51 +122,38 @@ class AgentKernel:
         Returns:
             包含相关记忆的字典
         """
-        # 模拟记忆数据
-        if self.mode == "mock":
-            mock_memories = {
+        try:
+            # 如果是模拟模式或者检索失败，返回模拟数据
+            if self.mode == "mock":
+                return asyncio.run(self.memory_store.retrieve_relevant_memories(user_id, query, top_k))
+            else:
+                # 使用 Cosmos DB 检索记忆
+                return asyncio.run(self.memory_store.retrieve_relevant_memories(user_id, query, top_k))
+        except Exception as e:
+            logger.error(f"检索记忆时出错: {str(e)}")
+            # 返回模拟数据
+            return {
                 "memories": [
                     {
                         "summary": "User said they dislike rainy days last week",
                         "embedding_source": "2024-04-12 19:22:31 Chat content",
-                        "relevance": 0.93
+                        "relevance": 0.93,
+                        "memory_type": "preference"
                     },
                     {
                         "summary": "User mentioned they want someone to be with them when they're under pressure",
                         "embedding_source": "2024-03-30",
-                        "relevance": 0.89
+                        "relevance": 0.89,
+                        "memory_type": "emotion"
                     },
                     {
                         "summary": "User said they've been very busy at work recently, often working overtime until late",
                         "embedding_source": "2024-04-10 20:15:45 Chat content",
-                        "relevance": 0.85
+                        "relevance": 0.85,
+                        "memory_type": "context"
                     }
                 ]
             }
-            return mock_memories
-        else:
-            # 实际环境应当调用相关API获取数据
-            # 这里暂时使用模拟数据
-            mock_memories = {
-                "memories": [
-                    {
-                        "summary": "User said they dislike rainy days last week",
-                        "embedding_source": "2024-04-12 19:22:31 Chat content",
-                        "relevance": 0.93
-                    },
-                    {
-                        "summary": "User mentioned they want someone to be with them when they're under pressure",
-                        "embedding_source": "2024-03-30",
-                        "relevance": 0.89
-                    },
-                    {
-                        "summary": "User said they've been very busy at work recently, often working overtime until late",
-                        "embedding_source": "2024-04-10 20:15:45 Chat content",
-                        "relevance": 0.85
-                    }
-                ]
-            }
-            return mock_memories
     
     def build_prompt_with_memories_and_history(self, user_id: str, query: str = "", 
                                               emotion: Optional[str] = None, 
