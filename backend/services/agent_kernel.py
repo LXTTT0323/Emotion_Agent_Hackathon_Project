@@ -20,9 +20,12 @@ load_dotenv()
 
 # 从环境变量获取Azure OpenAI配置
 endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
-subscription_key = os.getenv("AZURE_OPENAI_API_KEY")
-deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4o")
-api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview")
+api_key = os.getenv("AZURE_OPENAI_API_KEY")
+deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME", "gpt-4o-mini")
+api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
+
+# 是否使用模拟响应
+USE_MOCK_RESPONSES = os.getenv("USE_MOCK_RESPONSES", "0") == "1"
 
 class AgentKernel:
     def __init__(self, mode="default"):
@@ -32,18 +35,28 @@ class AgentKernel:
         Args:
             mode: 运行模式 (default 或 mock)
         """
-        self.mode = mode
+        # 如果环境变量设置为使用模拟响应，则强制使用mock模式
+        if USE_MOCK_RESPONSES:
+            self.mode = "mock"
+            logger.info("已启用模拟响应模式")
+        else:
+            self.mode = mode
         
         # 初始化 CosmosMemoryStore
         self.memory_store = CosmosMemoryStore()
         
         # 初始化 OpenAI 客户端
         try:
-            self.client = AzureOpenAI(
-                api_version=api_version,
-                azure_endpoint=endpoint,
-                api_key=subscription_key,
-            )
+            if self.mode != "mock":
+                self.client = AzureOpenAI(
+                    api_version=api_version,
+                    azure_endpoint=endpoint,
+                    api_key=api_key,
+                )
+                logger.info(f"成功初始化 OpenAI 客户端，使用API版本: {api_version}")
+            else:
+                self.client = None
+                logger.info("模拟模式下不初始化真实OpenAI客户端")
         except Exception as e:
             logger.error(f"初始化 OpenAI 客户端时出错: {str(e)}")
             self.client = None
@@ -255,21 +268,30 @@ class AgentKernel:
         )
         
         # 记录发送的消息
-        print(f"向模型发送的消息: {json.dumps(messages, ensure_ascii=False, indent=2)}")
+        logger.info(f"向模型发送的消息: {json.dumps(messages, ensure_ascii=False, indent=2)}")
         
-        # 使用非流式响应
-        response = await asyncio.to_thread(
-            self.client.chat.completions.create,
-            stream=False,  # 使用非流式响应
-            messages=messages,
-            max_tokens=4096,
-            temperature=0.7,
-            top_p=1.0,
-            model=deployment
-        )
-        
-        # 获取响应内容
-        full_response = response.choices[0].message.content
+        # 模拟模式返回模拟回复
+        if self.mode == "mock" or self.client is None:
+            logger.info("使用模拟模式生成回复")
+            full_response = self._generate_mock_response(query, emotion)
+        else:
+            try:
+                # 使用非流式响应
+                response = await asyncio.to_thread(
+                    self.client.chat.completions.create,
+                    messages=messages,
+                    max_tokens=4096,
+                    temperature=0.7,
+                    top_p=1.0,
+                    model=deployment
+                )
+                
+                # 获取响应内容
+                full_response = response.choices[0].message.content
+            except Exception as e:
+                logger.error(f"调用OpenAI API时出错: {str(e)}")
+                # 出错时使用模拟响应作为备份
+                full_response = f"抱歉，我遇到了技术问题。错误信息: {str(e)}"
         
         # 更新对话历史
         if query:  # 只有在有用户输入的情况下才更新对话历史
@@ -280,6 +302,18 @@ class AgentKernel:
             # 保留最近的10轮对话（20条消息）
             if len(self.conversation_history[user_id]) > 20:
                 self.conversation_history[user_id] = self.conversation_history[user_id][-20:]
+                
+            # 将对话存储到记忆系统
+            try:
+                asyncio.create_task(self.memory_store.add_interaction(
+                    user_id=user_id,
+                    text=query,
+                    emotion=emotion or "neutral",
+                    suggestion=full_response,
+                    confidence=confidence or 0.8
+                ))
+            except Exception as e:
+                logger.error(f"存储对话到记忆系统时出错: {str(e)}")
         
         return full_response
     
@@ -322,21 +356,30 @@ class AgentKernel:
         messages.append(followup_instruction)
         
         # 记录发送的消息
-        print(f"向模型发送的消息: {json.dumps(messages, ensure_ascii=False, indent=2)}")
+        logger.info(f"向模型发送的消息: {json.dumps(messages, ensure_ascii=False, indent=2)}")
         
-        # 使用非流式响应
-        response = await asyncio.to_thread(
-            self.client.chat.completions.create,
-            stream=False,  # 使用非流式响应
-            messages=messages,
-            max_tokens=4096,
-            temperature=0.7,
-            top_p=1.0,
-            model=deployment
-        )
-        
-        # 获取响应内容
-        full_response = response.choices[0].message.content
+        # 模拟模式返回模拟回复
+        if self.mode == "mock" or self.client is None:
+            logger.info("使用模拟模式生成主动对话")
+            full_response = self._generate_mock_followup(emotion, time_of_day)
+        else:
+            try:
+                # 使用非流式响应
+                response = await asyncio.to_thread(
+                    self.client.chat.completions.create,
+                    messages=messages,
+                    max_tokens=4096,
+                    temperature=0.7,
+                    top_p=1.0,
+                    model=deployment
+                )
+                
+                # 获取响应内容
+                full_response = response.choices[0].message.content
+            except Exception as e:
+                logger.error(f"调用OpenAI API时出错: {str(e)}")
+                # 出错时使用模拟响应作为备份
+                full_response = f"嗨，我注意到你已经有一段时间没有互动了。你现在还好吗？"
         
         # 更新对话历史
         self.conversation_history[user_id].append({"role": "assistant", "content": full_response})
@@ -371,6 +414,87 @@ class AgentKernel:
             return self.conversation_history[user_id]
         return []
 
+    def _generate_mock_response(self, query: str, emotion: Optional[str] = None) -> str:
+        """生成模拟回复"""
+        emotion_responses = {
+            "happy": [
+                "很高兴看到你心情不错！继续保持这种积极的态度，它对你的健康非常有益。",
+                "你的快乐真的很有感染力！希望你能一直保持这种美好的心情。"
+            ],
+            "sad": [
+                "我能感觉到你现在可能有些低落。请记住，这些感受是暂时的，而且允许自己感到悲伤也是健康的。",
+                "听起来你现在心情不太好。如果你需要倾诉，我在这里。有时候，简单地表达出来就能减轻一些负担。"
+            ],
+            "angry": [
+                "我理解你现在感到生气。深呼吸可能会有所帮助。你想谈谈是什么触发了这种情绪吗？",
+                "感到生气是完全正常的反应。给自己一些空间冷静下来，然后再决定如何处理这个情况可能会有帮助。"
+            ],
+            "anxious": [
+                "焦虑感可能会让人不舒服，但这也是身体的一种自然反应。尝试进行5-4-3-2-1练习可能会有所帮助。",
+                "当焦虑出现时，试着专注于当下，接受这种感觉，提醒自己这只是暂时的。"
+            ],
+            "tired": [
+                "听起来你可能需要休息了。即使是短暂的休息也能帮助恢复精力。",
+                "疲劳是身体告诉你需要照顾自己的方式。可以考虑今晚早点休息。"
+            ],
+            "neutral": [
+                "谢谢分享你的想法。有时候保持中立的态度可以帮助我们更客观地看待事物。",
+                "平静的状态是反思和规划的好时机。你有什么想法或计划吗？"
+            ]
+        }
+        
+        # 根据查询中的关键词简单判断情绪
+        detected_emotion = "neutral"
+        if emotion:
+            detected_emotion = emotion
+        elif "happy" in query.lower() or "good" in query.lower() or "great" in query.lower():
+            detected_emotion = "happy"
+        elif "sad" in query.lower() or "down" in query.lower() or "unhappy" in query.lower():
+            detected_emotion = "sad"
+        elif "angry" in query.lower() or "mad" in query.lower() or "frustrated" in query.lower():
+            detected_emotion = "angry"
+        elif "anxious" in query.lower() or "worried" in query.lower() or "nervous" in query.lower():
+            detected_emotion = "anxious"
+        elif "tired" in query.lower() or "exhausted" in query.lower() or "sleepy" in query.lower():
+            detected_emotion = "tired"
+            
+        # 获取对应情绪的回复
+        responses = emotion_responses.get(detected_emotion, emotion_responses["neutral"])
+        return random.choice(responses)
+        
+    def _generate_mock_followup(self, emotion: Optional[str] = None, time_of_day: Optional[str] = None) -> str:
+        """生成模拟主动对话"""
+        followups = [
+            "嗨，我注意到你最近似乎有些安静。一切都好吗？",
+            "想和你确认一下你最近怎么样。有什么我能帮上忙的吗？",
+            "只是想看看你最近的情况。希望你过得不错！",
+            "已经有一段时间没有交流了，想着来问候一下。你今天感觉如何？",
+            "我在想你最近的情况如何。有什么想分享的吗？"
+        ]
+        
+        # 根据时间定制问候
+        if time_of_day == "morning":
+            time_greetings = [
+                "早上好！希望你今天有个美好的开始。",
+                "早安！新的一天充满可能性，希望你感觉良好。"
+            ]
+            followups.extend(time_greetings)
+        elif time_of_day == "evening":
+            time_greetings = [
+                "晚上好！今天过得如何？",
+                "到了放松的时间了。今天过得怎么样？"
+            ]
+            followups.extend(time_greetings)
+            
+        # 根据情绪定制问候
+        if emotion == "sad" or emotion == "D":
+            emotion_greetings = [
+                "我感觉你可能正在经历一些困难。想聊聊吗？",
+                "有时候生活会很艰难。记住，这只是暂时的，你不是一个人。"
+            ]
+            followups.extend(emotion_greetings)
+            
+        return random.choice(followups)
 
 # 示例用法
 if __name__ == "__main__":
