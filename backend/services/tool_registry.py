@@ -6,6 +6,7 @@ from backend.tools.fetch_health_data import fetch_health_data
 from backend.tools.user_profile_tool import get_user_profile
 from backend.tools.intervene import generate_suggestion
 from backend.tools.should_trigger_breathing_tool import should_trigger_breathing_tool
+from backend.tools.emotion_prediction_tool import predict_emotion_and_generate_question
 
 
 class ToolRegistry:
@@ -70,4 +71,11 @@ class ToolRegistry:
             name="should_trigger_breathing_tool",
             function=should_trigger_breathing_tool,
             description="Determines if the breathing tool should be triggered based on the user's emotional state and health data."
+        )
+
+        # Register emotion prediction tool
+        self.register_tool(
+            name="predict_emotion_and_generate_question",
+            function=predict_emotion_and_generate_question,
+            description="Predicts emotion from health data and generates appropriate questions for user interaction."
         )
