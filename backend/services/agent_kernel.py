@@ -5,6 +5,8 @@ from typing import List, Dict, Any, Tuple, Optional
 import asyncio
 import random
 from dotenv import load_dotenv
+from datetime import datetime
+from ..memory.context_store import ContextStore
 
 # 加载环境变量
 load_dotenv()
@@ -31,6 +33,75 @@ class AgentKernel:
         )
         # 存储用户对话历史的字典
         self.conversation_history = {}
+        # 初始化 ContextStore
+        self.context_store = ContextStore()
+    
+    def analyze_emotion(self, text: str) -> Tuple[str, float]:
+        """
+        分析文本的情绪状态
+        
+        Args:
+            text: 需要分析的文本
+            
+        Returns:
+            (emotion, confidence): 情绪状态和置信度
+        """
+        if self.mode == "mock":
+            # 模拟情绪分析
+            emotions = ["P", "N", "D"]  # Positive, Neutral, Depressed
+            emotion = random.choice(emotions)
+            confidence = random.uniform(0.4, 0.95)
+            return emotion, confidence
+        else:
+            # TODO: 实现实际的情绪分析逻辑
+            # 这里暂时使用模拟数据
+            emotions = ["P", "N", "D"]
+            emotion = random.choice(emotions)
+            confidence = random.uniform(0.4, 0.95)
+            return emotion, confidence
+    
+    async def add_interaction_to_store(self, user_id: str, text: str, suggestion: str):
+        """
+        记录交互数据到 ContextStore
+        
+        Args:
+            user_id: 用户ID
+            text: 用户消息
+            suggestion: AI回复
+        """
+        emotion, confidence = self.analyze_emotion(text)
+        await self.context_store.add_interaction(
+            user_id=user_id,
+            text=text,
+            emotion=emotion,
+            confidence=confidence,
+            suggestion=suggestion
+        )
+    
+    async def get_user_context(self, user_id: str) -> Dict[str, Any]:
+        """
+        获取用户上下文信息
+        
+        Args:
+            user_id: 用户ID
+            
+        Returns:
+            用户上下文信息
+        """
+        return await self.context_store.get_user_context(user_id)
+    
+    async def get_recent_emotions(self, user_id: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """
+        获取用户最近的情绪记录
+        
+        Args:
+            user_id: 用户ID
+            limit: 返回的记录数量
+            
+        Returns:
+            最近的情绪记录列表
+        """
+        return await self.context_store.get_recent_emotions(user_id, limit)
     
     def get_user_health_data(self, user_id: str, emotion: Optional[str] = None, confidence: Optional[float] = None) -> Dict[str, Any]:
         """
@@ -149,21 +220,25 @@ class AgentKernel:
             }
             return mock_memories
     
-    def build_prompt_with_memories_and_history(self, user_id: str, query: str = "", 
-                                              emotion: Optional[str] = None, 
-                                              confidence: Optional[float] = None,
-                                              time_of_day: Optional[str] = None,
-                                              reason: Optional[str] = None) -> List[Dict[str, str]]:
+    async def build_prompt_with_memories_and_history(self, user_id: str, query: str = "", 
+                                                   emotion: Optional[str] = None, 
+                                                   confidence: Optional[float] = None,
+                                                   time_of_day: Optional[str] = None,
+                                                   reason: Optional[str] = None,
+                                                   user_context: Optional[Dict[str, Any]] = None,
+                                                   recent_emotions: Optional[List[Dict[str, Any]]] = None) -> List[Dict[str, str]]:
         """
         构建包含记忆上下文和对话历史的prompt
         
         Args:
             user_id: 用户ID
-            query: 用户当前查询
-            emotion: 用户情绪状态 (P=积极, N=中性, D=消极)
+            query: 用户查询
+            emotion: 用户情绪状态
             confidence: 情绪置信度
-            time_of_day: 一天中的时间段(morning, afternoon, evening, night)
+            time_of_day: 一天中的时间段
             reason: 特殊原因描述
+            user_context: 用户上下文信息
+            recent_emotions: 最近的情绪记录
             
         Returns:
             带有记忆上下文和对话历史的消息列表
@@ -172,13 +247,18 @@ class AgentKernel:
         health_data = self.get_user_health_data(user_id, emotion, confidence)
         
         # 获取用户上下文
-        user_context = self.get_user_context_from_memory(user_id, query)
+        if user_context is None:
+            user_context = await self.get_user_context(user_id)
+        
+        # 获取最近的情绪记录
+        if recent_emotions is None:
+            recent_emotions = await self.get_recent_emotions(user_id)
         
         # 构建系统提示，包含记忆信息
         system_content = "You are an emotional support assistant, providing warmth and understanding. Here is some relevant information about the user to consider in your response:"
         
         # 添加用户记忆信息
-        for memory in user_context:
+        for memory in user_context.get("memories", []):
             system_content += f"\n- {memory['summary']} ({memory['embedding_source']})"
         
         # 根据健康数据调整提示
@@ -220,6 +300,23 @@ class AgentKernel:
                 "content": query
             })
         
+        # 添加用户上下文信息
+        if user_context:
+            for key, value in user_context.items():
+                if key != "memories":  # 跳过已经添加的记忆信息
+                    messages.append({
+                        "role": "user",
+                        "content": f"{key}: {value}"
+                    })
+        
+        # 添加最近的情绪记录
+        if recent_emotions:
+            for emotion in recent_emotions:
+                messages.append({
+                    "role": "user",
+                    "content": f"Recent emotion: {emotion['emotion']} (confidence: {emotion['confidence']})"
+                })
+        
         return messages
     
     async def chat(self, query: str, user_id: str = "default_user", 
@@ -240,12 +337,20 @@ class AgentKernel:
         if user_id not in self.conversation_history:
             self.conversation_history[user_id] = []
         
+        # 获取用户上下文
+        user_context = await self.get_user_context(user_id)
+        
+        # 获取最近的情绪记录
+        recent_emotions = await self.get_recent_emotions(user_id)
+        
         # 构建包含记忆和历史的消息
-        messages = self.build_prompt_with_memories_and_history(
+        messages = await self.build_prompt_with_memories_and_history(
             user_id=user_id, 
             query=query,
             emotion=emotion,
-            confidence=confidence
+            confidence=confidence,
+            user_context=user_context,
+            recent_emotions=recent_emotions
         )
         
         # 记录发送的消息
@@ -254,7 +359,7 @@ class AgentKernel:
         # 使用非流式响应
         response = await asyncio.to_thread(
             self.client.chat.completions.create,
-            stream=False,  # 使用非流式响应
+            stream=False,
             messages=messages,
             max_tokens=4096,
             temperature=0.7,
@@ -265,13 +370,15 @@ class AgentKernel:
         # 获取响应内容
         full_response = response.choices[0].message.content
         
+        # 记录交互数据
+        await self.add_interaction_to_store(user_id, query, full_response)
+        
         # 更新对话历史
-        if query:  # 只有在有用户输入的情况下才更新对话历史
+        if query:
             self.conversation_history[user_id].append({"role": "user", "content": query})
             self.conversation_history[user_id].append({"role": "assistant", "content": full_response})
             
-            # 如果对话历史太长，可以进行截断以避免超出模型的上下文限制
-            # 保留最近的10轮对话（20条消息）
+            # 如果对话历史太长，可以进行截断
             if len(self.conversation_history[user_id]) > 20:
                 self.conversation_history[user_id] = self.conversation_history[user_id][-20:]
         
@@ -299,13 +406,21 @@ class AgentKernel:
         if user_id not in self.conversation_history:
             self.conversation_history[user_id] = []
         
-        # 构建包含记忆和历史的消息，没有用户查询
-        messages = self.build_prompt_with_memories_and_history(
+        # 获取用户上下文
+        user_context = await self.get_user_context(user_id)
+        
+        # 获取最近的情绪记录
+        recent_emotions = await self.get_recent_emotions(user_id)
+        
+        # 构建包含记忆和历史的消息
+        messages = await self.build_prompt_with_memories_and_history(
             user_id=user_id,
             emotion=emotion,
             confidence=confidence,
             time_of_day=time_of_day,
-            reason=reason
+            reason=reason,
+            user_context=user_context,
+            recent_emotions=recent_emotions
         )
         
         # 添加一个指示性提示
@@ -321,7 +436,7 @@ class AgentKernel:
         # 使用非流式响应
         response = await asyncio.to_thread(
             self.client.chat.completions.create,
-            stream=False,  # 使用非流式响应
+            stream=False,
             messages=messages,
             max_tokens=4096,
             temperature=0.7,
@@ -332,10 +447,13 @@ class AgentKernel:
         # 获取响应内容
         full_response = response.choices[0].message.content
         
+        # 记录交互数据（主动发起对话时，text 为空）
+        await self.add_interaction_to_store(user_id, "", full_response)
+        
         # 更新对话历史
         self.conversation_history[user_id].append({"role": "assistant", "content": full_response})
         
-        # 如果对话历史太长，可以进行截断以避免超出模型的上下文限制
+        # 如果对话历史太长，可以进行截断
         if len(self.conversation_history[user_id]) > 20:
             self.conversation_history[user_id] = self.conversation_history[user_id][-20:]
         
