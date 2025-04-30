@@ -41,13 +41,32 @@ class AgentKernel:
             logger.info("已启用模拟响应模式")
         else:
             self.mode = mode
+            logger.info(f"mode: {mode}")
         
         # 初始化 CosmosMemoryStore
         self.memory_store = CosmosMemoryStore()
         
+        # 情绪状态映射
+        self.statuses = ["P", "N", "D"]  # Positive, Neutral, Depressed
+        
+        # 新旧情绪状态映射
+        self.emotion_status_mapping = {
+            "amusement": "P",  # 愉悦 -> 积极
+            "baseline": "N",   # 基线 -> 中性
+            "stress": "D"      # 压力 -> 消极
+        }
+        
         # 初始化 OpenAI 客户端
         try:
+           
+            logger.info(f"Endpoint: {endpoint}")
+            logger.info(f"API Key 是否存在: {bool(api_key)}")
+            logger.info(f"Deployment: {deployment}")
+            logger.info(f"API Version: {api_version}")
+                
+
             if self.mode != "mock":
+                logger.info(f"尝试初始化 OpenAI 客户端...")
                 self.client = AzureOpenAI(
                     api_version=api_version,
                     azure_endpoint=endpoint,
@@ -64,6 +83,27 @@ class AgentKernel:
         # 存储用户对话历史的字典
         self.conversation_history = {}
     
+    def convert_emotion_to_status(self, emotion_data: Dict[str, Any]) -> Tuple[str, float]:
+        """
+        将情绪预测结果转换为状态码和置信度
+        
+        Args:
+            emotion_data: 情绪预测工具返回的数据
+            
+        Returns:
+            (status, confidence) 元组
+        """
+        predicted_emotion = emotion_data["predicted_emotion"]
+        emotion_probs = emotion_data["emotion_probabilities"]
+        
+        # 获取状态码
+        status = self.emotion_status_mapping.get(predicted_emotion, "N")
+        
+        # 获取置信度
+        confidence = emotion_probs[predicted_emotion]
+        
+        return status, confidence
+
     def get_user_health_data(self, user_id: str, emotion: Optional[str] = None, confidence: Optional[float] = None) -> Dict[str, Any]:
         """
         获取用户健康数据
@@ -85,8 +125,7 @@ class AgentKernel:
             }
         elif self.mode == "mock":
             # 模拟健康数据
-            statuses = ["P", "N", "D"]  # Positive, Neutral, Depressed
-            status = random.choice(statuses)
+            status = random.choice(self.statuses)
             confidence = random.uniform(0.4, 0.95)
             
             return {
@@ -95,17 +134,39 @@ class AgentKernel:
                 "confidence": confidence
             }
         else:
-            # 实际环境应当调用相关API获取数据
-            # 这里暂时使用模拟数据
-            statuses = ["P", "N", "D"]
-            status = random.choice(statuses)
-            confidence = random.uniform(0.4, 0.95)
-            
-            return {
-                "user_id": user_id,
-                "status": status,
-                "confidence": confidence
-            }
+            try:
+                # 调用情绪预测工具
+                from backend.tools.emotion_prediction_tool import predict_emotion_and_generate_question
+                from backend.tools.fetch_health_data import fetch_health_data
+                
+                # 获取健康数据
+                health_data = asyncio.run(fetch_health_data(user_id))
+                if "error" in health_data:
+                    raise Exception(health_data["error"])
+                
+                # 预测情绪
+                emotion_result = asyncio.run(predict_emotion_and_generate_question(health_data))
+                if "error" in emotion_result:
+                    raise Exception(emotion_result["error"])
+                
+                # 转换为状态码和置信度
+                status, confidence = self.convert_emotion_to_status(emotion_result)
+                
+                return {
+                    "user_id": user_id,
+                    "status": status,
+                    "confidence": confidence,
+                    "emotion_details": emotion_result  # 保存详细的情绪预测结果
+                }
+                
+            except Exception as e:
+                logger.error(f"获取用户健康数据时出错: {str(e)}")
+                # 出错时返回默认值
+                return {
+                    "user_id": user_id,
+                    "status": "N",
+                    "confidence": 0.5
+                }
     
     def get_user_context_from_memory(self, user_id: str, query: str = "") -> List[Dict[str, Any]]:
         """
