@@ -11,7 +11,7 @@ load_dotenv()
 
 # Add the parent directory to the path so we can import from the local modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from backend.routers import agent_router, health_router
+from backend.routers import agent_router, health_router, user_router
 
 app = FastAPI(
     title="Emotion Agent API",
@@ -31,6 +31,7 @@ app.add_middleware(
 # Include routers
 app.include_router(agent_router.router)
 app.include_router(health_router.router)
+app.include_router(user_router.router)
 
 # 创建静态文件目录（如果不存在）
 static_dir = Path(__file__).parent / "static"

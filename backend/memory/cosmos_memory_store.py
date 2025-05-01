@@ -64,6 +64,98 @@ class CosmosMemoryStore:
             self.logger.error(f"获取用户配置文件时出错: {str(e)}")
             return self._get_local_user_profile(user_id)
     
+    async def get_user_id_by_username(self, username: str) -> Optional[str]:
+        """通过用户名获取用户ID"""
+        try:
+            if not self.client:
+                return username  # 在本地模式下，直接使用username作为user_id
+                
+            query = f"SELECT c.id, c.user_id FROM c WHERE c.username = '{username}'"
+            items = list(self.profile_container.query_items(
+                query=query,
+                enable_cross_partition_query=True
+            ))
+            
+            if items:
+                return items[0]["user_id"]
+            else:
+                # 如果用户名不存在，则创建新用户并返回ID
+                new_profile = await self.create_user_profile(username=username)
+                return new_profile["user_id"]
+                
+        except Exception as e:
+            self.logger.error(f"通过用户名获取用户ID时出错: {str(e)}")
+            return username  # 出错时返回用户名作为ID
+    
+    async def create_user_profile(self, username: str, metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+        """创建新用户配置文件"""
+        # 生成唯一用户ID
+        user_id = f"user_{int(datetime.now().timestamp())}"
+        
+        profile = {
+            "id": user_id,
+            "user_id": user_id,
+            "username": username,
+            "created_at": datetime.now().isoformat(),
+            "last_active": datetime.now().isoformat(),
+            "preferences": {
+                "mbti": None,
+                "tone": "supportive",
+                "age": None,
+                "star_sign": None
+            },
+            "metadata": metadata or {}
+        }
+        
+        try:
+            if not self.client:
+                self._save_local_user_profile(profile)
+                return profile
+                
+            # 保存到 Cosmos DB
+            self.profile_container.create_item(body=profile)
+            self.logger.info(f"创建新用户配置文件: {username} (ID: {user_id})")
+            return profile
+            
+        except Exception as e:
+            self.logger.error(f"创建用户配置文件时出错: {str(e)}")
+            self._save_local_user_profile(profile)
+            return profile
+    
+    async def update_user_preferences(self, user_id: str, preferences: Dict[str, Any]) -> Dict[str, Any]:
+        """更新用户偏好设置"""
+        try:
+            if not self.client:
+                return self._update_local_user_preferences(user_id, preferences)
+                
+            # 查询现有配置
+            query = f"SELECT * FROM c WHERE c.user_id = '{user_id}'"
+            items = list(self.profile_container.query_items(
+                query=query,
+                enable_cross_partition_query=True
+            ))
+            
+            if not items:
+                raise Exception(f"用户 {user_id} 不存在")
+                
+            profile = items[0]
+            
+            # 更新偏好设置
+            profile["preferences"].update(preferences)
+            profile["last_active"] = datetime.now().isoformat()
+            
+            # 保存更新
+            self.profile_container.replace_item(
+                item=profile["id"],
+                body=profile
+            )
+            
+            return profile
+            
+        except Exception as e:
+            self.logger.error(f"更新用户偏好设置时出错: {str(e)}")
+            return self._update_local_user_preferences(user_id, preferences)
+    
     async def add_interaction(self, user_id: str, text: str, emotion: str, 
                              suggestion: str, confidence: float = 0.8,
                              metadata: Dict[str, Any] = None) -> str:
@@ -213,6 +305,7 @@ class CosmosMemoryStore:
                     "start_time": timestamp,
                     "last_updated": timestamp,
                     "messages": [message],
+                    "summary": [],  # 初始化摘要列表
                     "metadata": {
                         "emotion_trend": [],
                         "active": True
@@ -242,16 +335,35 @@ class CosmosMemoryStore:
                     if message.get("role") == "user" and "emotion" in message:
                         conversation["metadata"]["emotion_trend"].append(message["emotion"])
                     
+                    # 检查是否需要生成摘要
+                    if len(conversation["messages"]) % 10 == 0:
+                        # 导入摘要器
+                        from backend.services.summarizer import summarizer
+                        
+                        # 获取最近10条消息
+                        recent_messages = conversation["messages"][-10:]
+                        
+                        # 生成摘要
+                        summary_text = await summarizer.summarize(recent_messages)
+                        
+                        # 将摘要添加到数组
+                        if "summary" not in conversation:
+                            conversation["summary"] = []
+                            
+                        conversation["summary"].append({
+                            "text": summary_text,
+                            "timestamp": timestamp,
+                            "message_range": [len(conversation["messages"])-10, len(conversation["messages"])-1]
+                        })
+                    
                     self.conversation_container.replace_item(
                         item=conversation["id"], 
                         body=conversation
                     )
                     return conversation["id"]
                 else:
-                    # 如果没有找到活跃对话，创建新对话
-                    return await self.update_or_create_conversation(
-                        user_id, message, is_new=True
-                    )
+                    # 如果没有活跃对话，创建新对话
+                    return await self.update_or_create_conversation(user_id, message, True)
         except Exception as e:
             self.logger.error(f"更新对话历史时出错: {str(e)}")
             return "local_conversation_id"
@@ -261,253 +373,324 @@ class CosmosMemoryStore:
         """获取对话历史"""
         try:
             if not self.client:
-                return []
+                return [
+                    {"role": "user", "content": "模拟本地历史消息1"},
+                    {"role": "assistant", "content": "这是一条模拟的助手回复"}
+                ]
                 
+            # 构建查询
             if conversation_id:
-                # 获取特定对话
-                try:
-                    conversation = self.conversation_container.read_item(
-                        item=conversation_id,
-                        partition_key=user_id
-                    )
-                    return conversation["messages"]
-                except exceptions.CosmosResourceNotFoundError:
-                    self.logger.warning(f"对话 {conversation_id} 未找到")
-                    return []
-                except Exception as e:
-                    self.logger.error(f"获取对话历史时出错: {str(e)}")
-                    return []
+                query = f"SELECT c.messages FROM c WHERE c.id = '{conversation_id}'"
             else:
-                # 获取最近的活跃对话
                 query = f"""
-                    SELECT TOP 1 * FROM c 
+                    SELECT TOP 1 c.messages FROM c 
                     WHERE c.user_id = '{user_id}' AND c.metadata.active = true
                     ORDER BY c.last_updated DESC
                 """
                 
-                conversations = list(self.conversation_container.query_items(
-                    query=query,
-                    enable_cross_partition_query=True
-                ))
-                
-                if conversations:
-                    return conversations[0]["messages"]
+            # 执行查询
+            conversations = list(self.conversation_container.query_items(
+                query=query,
+                enable_cross_partition_query=True
+            ))
+            
+            if conversations and "messages" in conversations[0]:
+                return conversations[0]["messages"]
+            else:
                 return []
+                
         except Exception as e:
             self.logger.error(f"获取对话历史时出错: {str(e)}")
-            return []
+            return [
+                {"role": "user", "content": "模拟消息 (获取历史出错)"},
+                {"role": "assistant", "content": "这是一条模拟的助手回复"}
+            ]
     
-    # 辅助方法
+    async def get_conversation_summaries(self, user_id: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """获取用户的对话摘要列表"""
+        try:
+            if not self.client:
+                return self._get_mock_conversation_summaries(limit)
+                
+            query = f"""
+                SELECT c.id, c.start_time, c.last_updated, c.metadata, 
+                       ARRAY_LENGTH(c.messages) as message_count,
+                       c.summary
+                FROM c 
+                WHERE c.user_id = '{user_id}'
+                ORDER BY c.last_updated DESC
+                OFFSET 0 LIMIT {limit}
+            """
+            
+            conversations = list(self.conversation_container.query_items(
+                query=query,
+                enable_cross_partition_query=True
+            ))
+            
+            # 处理结果
+            results = []
+            for conv in conversations:
+                # 获取最新的摘要文本，如果有
+                latest_summary = ""
+                if "summary" in conv and conv["summary"]:
+                    # 提取最后一条摘要
+                    latest_summary = conv["summary"][-1]["text"] if len(conv["summary"]) > 0 else ""
+                
+                # 构建结果对象
+                results.append({
+                    "conversation_id": conv["id"],
+                    "start_time": conv["start_time"],
+                    "last_updated": conv["last_updated"],
+                    "message_count": conv.get("message_count", 0),
+                    "is_active": conv["metadata"].get("active", False),
+                    "summary": latest_summary
+                })
+            
+            return results
+                
+        except Exception as e:
+            self.logger.error(f"获取对话摘要列表时出错: {str(e)}")
+            return self._get_mock_conversation_summaries(limit)
+    
     def _create_default_profile(self, user_id: str) -> Dict[str, Any]:
         """创建默认用户配置文件"""
         profile = {
             "id": user_id,
             "user_id": user_id,
-            "personality": {
-                "mbti": "INFJ",
-                "communication_style": "supportive"
-            },
-            "preferences": {
-                "suggestion_tone": "gentle",
-                "likes_creative_suggestions": True,
-                "activity_preferences": ["meditation", "journaling", "breathing_exercises"],
-                "notification_frequency": "medium"
-            },
-            "health_goals": {
-                "reduce_stress": True,
-                "improve_sleep": True,
-                "track_mood": True
-            },
+            "username": f"user_{user_id[-6:]}",  # 生成一个默认用户名
             "created_at": datetime.now().isoformat(),
-            "last_updated": datetime.now().isoformat()
+            "last_active": datetime.now().isoformat(),
+            "preferences": {
+                "mbti": None,
+                "tone": "supportive",
+                "age": None,
+                "star_sign": None
+            }
         }
         
-        # 保存到数据库
         try:
             if self.client:
                 self.profile_container.create_item(body=profile)
+            else:
+                self._save_local_user_profile(profile)
         except Exception as e:
-            self.logger.error(f"创建默认配置文件时出错: {str(e)}")
-        
+            self.logger.error(f"创建默认用户配置文件时出错: {str(e)}")
+            self._save_local_user_profile(profile)
+            
         return profile
     
     def _extract_keywords(self, text: str) -> List[str]:
         """从文本中提取关键词"""
-        # 简单实现 - 在实际项目中应该使用 NLP 工具
+        # 简单实现：按空格分割并过滤短词
         words = text.lower().split()
-        # 移除常见停用词
-        stopwords = {"i", "me", "my", "myself", "we", "our", "the", "a", "an", "and", "but", "if", "or", "because", "as", "until", "while", "of", "at", "by", "for", "with", "about", "against", "between", "into", "through", "during", "before", "after", "above", "below", "to", "from", "up", "down", "in", "out", "on", "off", "over", "under", "again", "further", "then", "once"}
-        keywords = [word for word in words if len(word) > 3 and word not in stopwords]
-        return keywords[:10]  # 限制关键词数量
+        return [word for word in words if len(word) > 3]
     
     async def _generate_embedding(self, text: str) -> List[float]:
-        """生成文本的向量嵌入"""
-        # 在实际项目中，这里应该调用 OpenAI API 或其他嵌入模型
-        # 这里返回一个模拟嵌入
-        import random
-        return [random.random() for _ in range(1536)]  # OpenAI 嵌入维度
+        """生成文本嵌入向量"""
+        # 在实际实现中，这将调用嵌入API
+        # 目前返回一个假的嵌入向量
+        return [0.1] * 10
     
     async def _create_and_store_embedding(self, user_id: str, source_id: str, 
                                         text: str, emotion: str, timestamp: str) -> None:
-        """创建并存储嵌入"""
+        """创建并存储记忆嵌入"""
         try:
-            if not self.client:
-                return
-                
-            embedding = await self._generate_embedding(text)
+            # 生成一个唯一ID
+            memory_id = f"mem_{int(datetime.now().timestamp())}"
             
-            # 生成简短摘要
-            summary = f"用户表达了{emotion}情绪: " + (text[:50] + "..." if len(text) > 50 else text)
+            # 创建一个简单的摘要
+            summary = text[:100] + "..." if len(text) > 100 else text
             
             # 提取关键词
             keywords = self._extract_keywords(text)
             
-            # 创建嵌入文档
-            embedding_id = f"emb_{int(datetime.now().timestamp())}"
-            embedding_doc = {
-                "id": embedding_id,
+            # 确定记忆类型
+            memory_type = "interaction"
+            
+            # 创建记忆文档
+            memory = {
+                "id": memory_id,
                 "user_id": user_id,
-                "source_type": "interaction",
-                "source_id": source_id,
                 "timestamp": timestamp,
-                "text": text,
+                "source_id": source_id,
+                "source_type": "interaction",
                 "summary": summary,
-                "embedding": embedding,
-                "memory_type": "emotion" if emotion in ["happy", "sad", "angry", "anxious", "tired"] else "general",
-                "keywords": keywords
+                "keywords": keywords,
+                "emotion": emotion,
+                "memory_type": memory_type,
+                "embedding": await self._generate_embedding(text)  # 在实际实现中，这将是真实的嵌入向量
             }
             
-            # 保存到 Cosmos DB
-            self.embedding_container.create_item(body=embedding_doc)
+            # 存储到 Cosmos DB
+            if self.client:
+                self.embedding_container.create_item(body=memory)
+                
         except Exception as e:
-            self.logger.error(f"保存嵌入时出错: {str(e)}")
+            self.logger.error(f"创建记忆嵌入时出错: {str(e)}")
     
-    # 本地存储方法（当 Cosmos DB 不可用时使用）
     def _get_local_user_profile(self, user_id: str) -> Dict[str, Any]:
-        """从本地文件获取用户配置文件"""
+        """从本地获取用户配置文件"""
         try:
-            # 确定配置文件路径
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            profile_path = os.path.join(current_dir, "user_profile.json")
+            cache_dir = os.path.join(os.path.dirname(__file__), "_local_cache")
+            os.makedirs(cache_dir, exist_ok=True)
             
-            # 检查文件是否存在
-            if not os.path.exists(profile_path):
-                return self._create_default_profile(user_id)
-                
-            # 从文件加载配置文件
-            with open(profile_path, "r") as f:
-                profiles = json.load(f)
-                
-            # 查找特定用户的配置文件
-            if user_id in profiles:
-                return profiles[user_id]
+            profile_path = os.path.join(cache_dir, f"profile_{user_id}.json")
+            
+            if os.path.exists(profile_path):
+                with open(profile_path, "r", encoding="utf-8") as f:
+                    return json.load(f)
             else:
-                return self._create_default_profile(user_id)
+                profile = self._create_default_profile(user_id)
+                self._save_local_user_profile(profile)
+                return profile
+                
         except Exception as e:
-            self.logger.error(f"加载本地用户配置文件时出错: {str(e)}")
-            return self._create_default_profile(user_id)
+            self.logger.error(f"从本地获取用户配置文件时出错: {str(e)}")
+            
+            # 返回默认配置文件
+            return {
+                "id": user_id,
+                "user_id": user_id,
+                "username": f"user_{user_id[-6:]}",
+                "created_at": datetime.now().isoformat(),
+                "last_active": datetime.now().isoformat(),
+                "preferences": {
+                    "mbti": None,
+                    "tone": "supportive",
+                    "age": None,
+                    "star_sign": None
+                }
+            }
+    
+    def _save_local_user_profile(self, profile: Dict[str, Any]) -> None:
+        """保存用户配置文件到本地"""
+        try:
+            cache_dir = os.path.join(os.path.dirname(__file__), "_local_cache")
+            os.makedirs(cache_dir, exist_ok=True)
+            
+            profile_path = os.path.join(cache_dir, f"profile_{profile['user_id']}.json")
+            
+            with open(profile_path, "w", encoding="utf-8") as f:
+                json.dump(profile, f, ensure_ascii=False, indent=2)
+                
+        except Exception as e:
+            self.logger.error(f"保存用户配置文件到本地时出错: {str(e)}")
+    
+    def _update_local_user_preferences(self, user_id: str, preferences: Dict[str, Any]) -> Dict[str, Any]:
+        """更新本地用户偏好设置"""
+        try:
+            # 获取现有配置文件
+            profile = self._get_local_user_profile(user_id)
+            
+            # 更新偏好设置
+            profile["preferences"].update(preferences)
+            profile["last_active"] = datetime.now().isoformat()
+            
+            # 保存更新
+            self._save_local_user_profile(profile)
+            
+            return profile
+            
+        except Exception as e:
+            self.logger.error(f"更新本地用户偏好设置时出错: {str(e)}")
+            return {
+                "id": user_id,
+                "user_id": user_id,
+                "error": str(e)
+            }
     
     def _add_local_interaction(self, user_id: str, interaction: Dict[str, Any]) -> None:
-        """将交互添加到本地文件"""
+        """添加交互记录到本地存储"""
         try:
-            # 确定记忆文件路径
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            memory_path = os.path.join(current_dir, "memory.json")
+            cache_dir = os.path.join(os.path.dirname(__file__), "_local_cache")
+            os.makedirs(cache_dir, exist_ok=True)
             
-            # 加载现有记忆
-            memory = {"users": {}}
-            if os.path.exists(memory_path):
-                with open(memory_path, "r") as f:
-                    memory = json.load(f)
+            interactions_path = os.path.join(cache_dir, f"interactions_{user_id}.json")
             
-            # 确保用户存在
-            if user_id not in memory["users"]:
-                memory["users"][user_id] = {
-                    "interactions": [],
-                    "emotion_history": [],
-                    "last_active": None
-                }
+            # 读取现有交互
+            interactions = []
+            if os.path.exists(interactions_path):
+                with open(interactions_path, "r", encoding="utf-8") as f:
+                    interactions = json.load(f)
             
-            # 添加交互
-            memory["users"][user_id]["interactions"].append({
-                "timestamp": interaction["timestamp"],
-                "text": interaction["text"],
-                "emotion": interaction["emotion"],
-                "suggestion": interaction["suggestion"]
-            })
+            # 添加新交互
+            interactions.append(interaction)
             
-            # 添加情绪历史
-            memory["users"][user_id]["emotion_history"].append({
-                "timestamp": interaction["timestamp"],
-                "emotion": interaction["emotion"]
-            })
-            
-            # 更新最后活跃时间
-            memory["users"][user_id]["last_active"] = interaction["timestamp"]
-            
-            # 保存记忆
-            with open(memory_path, "w") as f:
-                json.dump(memory, f, indent=2)
+            # 保存更新
+            with open(interactions_path, "w", encoding="utf-8") as f:
+                json.dump(interactions, f, ensure_ascii=False, indent=2)
+                
         except Exception as e:
-            self.logger.error(f"添加本地交互时出错: {str(e)}")
+            self.logger.error(f"添加交互记录到本地存储时出错: {str(e)}")
     
     def _get_local_recent_emotions(self, user_id: str, limit: int = 5) -> List[Dict[str, Any]]:
-        """从本地文件获取最近情绪"""
+        """从本地获取最近情绪记录"""
         try:
-            # 确定记忆文件路径
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            memory_path = os.path.join(current_dir, "memory.json")
+            cache_dir = os.path.join(os.path.dirname(__file__), "_local_cache")
+            os.makedirs(cache_dir, exist_ok=True)
             
-            # 检查文件是否存在
-            if not os.path.exists(memory_path):
+            emotions_path = os.path.join(cache_dir, f"emotions_{user_id}.json")
+            
+            if os.path.exists(emotions_path):
+                with open(emotions_path, "r", encoding="utf-8") as f:
+                    emotions = json.load(f)
+                    
+                # 返回最近的记录
+                return emotions[-limit:] if len(emotions) > limit else emotions
+            else:
                 return []
                 
-            # 加载记忆
-            with open(memory_path, "r") as f:
-                memory = json.load(f)
-            
-            # 检查用户是否存在
-            if user_id not in memory["users"]:
-                return []
-            
-            # 获取情绪历史
-            emotion_history = memory["users"][user_id].get("emotion_history", [])
-            
-            # 返回最近的n条记录
-            recent_emotions = emotion_history[-limit:] if emotion_history else []
-            
-            # 确保每条记录都有置信度字段
-            for emotion in recent_emotions:
-                if "confidence" not in emotion:
-                    emotion["confidence"] = 0.8  # 默认置信度
-            
-            return recent_emotions
         except Exception as e:
-            self.logger.error(f"获取本地情绪历史时出错: {str(e)}")
-            return []
+            self.logger.error(f"从本地获取最近情绪记录时出错: {str(e)}")
+            
+            # 返回模拟数据
+            return [
+                {
+                    "id": f"mock_emo_{i}",
+                    "user_id": user_id,
+                    "timestamp": datetime.now().isoformat(),
+                    "emotion": "N" if i % 2 == 0 else "P",
+                    "confidence": 0.8,
+                    "context_keywords": ["mock", "data"]
+                }
+                for i in range(limit)
+            ]
     
     def _get_mock_memories(self) -> Dict[str, List[Dict[str, Any]]]:
         """返回模拟记忆数据"""
-        mock_memories = {
+        return {
             "memories": [
                 {
-                    "summary": "用户上周说他讨厌下雨天",
-                    "embedding_source": "2024-04-12 19:22:31 Chat content",
+                    "summary": "用户说他们不喜欢下雨天",
+                    "embedding_source": "2024-04-12 19:22:31 对话内容",
                     "relevance": 0.93,
                     "memory_type": "preference"
                 },
                 {
-                    "summary": "用户说压力大时希望有人陪着他",
+                    "summary": "用户提到他们希望有人在他们压力大时陪伴他们",
                     "embedding_source": "2024-03-30",
                     "relevance": 0.89,
                     "memory_type": "emotion"
                 },
                 {
-                    "summary": "用户最近工作很忙，经常加班到很晚",
-                    "embedding_source": "2024-04-10 20:15:45 Chat content",
+                    "summary": "用户说他们最近工作很忙，经常加班到很晚",
+                    "embedding_source": "2024-04-10 20:15:45 对话内容",
                     "relevance": 0.85,
                     "memory_type": "context"
                 }
             ]
         }
-        return mock_memories 
+        
+    def _get_mock_conversation_summaries(self, limit: int = 5) -> List[Dict[str, Any]]:
+        """返回模拟对话摘要列表"""
+        return [
+            {
+                "conversation_id": f"mock_conv_{i}",
+                "start_time": (datetime.now().replace(day=datetime.now().day - i)).isoformat(),
+                "last_updated": (datetime.now().replace(hour=datetime.now().hour - i)).isoformat(),
+                "message_count": 10 + i * 5,
+                "is_active": i == 0,
+                "summary": f"这是第 {i+1} 个模拟对话的摘要，用户讨论了他们的日常生活和情绪状态。"
+            }
+            for i in range(limit)
+        ] 

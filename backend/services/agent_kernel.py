@@ -236,71 +236,70 @@ class AgentKernel:
                                               reason: Optional[str] = None) -> List[Dict[str, str]]:
         """
         构建包含记忆上下文和对话历史的prompt
-        
-        Args:
-            user_id: 用户ID
-            query: 用户当前查询
-            emotion: 用户情绪状态 (P=积极, N=中性, D=消极)
-            confidence: 情绪置信度
-            time_of_day: 一天中的时间段(morning, afternoon, evening, night)
-            reason: 特殊原因描述
-            
-        Returns:
-            带有记忆上下文和对话历史的消息列表
         """
-        # 获取用户健康数据
-        health_data = self.get_user_health_data(user_id, emotion, confidence)
-        
-        # 获取用户上下文
-        user_context = self.get_user_context_from_memory(user_id, query)
-        
-        # 构建系统提示，包含记忆信息
-        system_content = "You are an emotional support assistant, providing warmth and understanding. Here is some relevant information about the user to consider in your response:"
-        
-        # 添加用户记忆信息
-        for memory in user_context:
-            system_content += f"\n- {memory['summary']} ({memory['embedding_source']})"
-        
-        # 根据健康数据调整提示
-        if health_data["confidence"] > 0.6:
-            status = health_data["status"]
-            if status == "P":
-                system_content += "\n\nThe user seems to be in a positive mood. You can be cheerful and encouraging."
-            elif status == "N":
-                system_content += "\n\nThe user seems to be in a neutral mood. Be empathetic and provide support."
-            elif status == "D":
-                system_content += "\n\nThe user may be feeling depressed. Show extra care, be supportive, and suggest professional help if necessary."
-        
-        # 添加时间信息
-        if time_of_day:
-            system_content += f"\n\nThe current time of day is: {time_of_day}."
-        
-        # 添加特殊原因信息
-        if reason:
-            system_content += f"\n\nSpecial context: {reason}"
-        
-        system_content += "\n\nPlease provide personalized emotional support based on these memories and conversation history. Maintain consistency and coherence as if you're old friends."
-        
-        # 构建消息列表，包含系统消息
-        messages = [
-            {
-                "role": "system",
-                "content": system_content
-            }
-        ]
-        
-        # 添加历史对话（如果有）
-        if user_id in self.conversation_history:
-            messages.extend(self.conversation_history[user_id])
-        
-        # 添加当前用户查询（如果有）
-        if query:
-            messages.append({
-                "role": "user",
-                "content": query
-            })
-        
-        return messages
+        try:
+            # 获取相关记忆
+            memories = self.get_user_context_from_memory(user_id, query)
+            
+            # 构建记忆上下文
+            memory_context = ""
+            if memories:
+                memory_context = "这是我们之前的一些回忆：\n"
+                for memory in memories:
+                    memory_context += f"- {memory['summary']}\n"
+            
+            # 获取最近的情绪历史
+            emotion_history = asyncio.run(self.memory_store.get_recent_emotions(user_id, limit=3))
+            emotion_context = ""
+            if emotion_history:
+                emotion_context = "\n我记得你最近的状态：\n"
+                for e in emotion_history:
+                    emotion_context += f"- {e['timestamp']}: 那时的你{e['emotion']}\n"
+            
+            # 获取对话摘要
+            conversation_summaries = asyncio.run(self.memory_store.get_conversation_summaries(user_id, limit=2))
+            summary_context = ""
+            if conversation_summaries:
+                summary_context = "\n我们上次聊到：\n"
+                for summary in conversation_summaries:
+                    if summary.get('summary'):
+                        summary_context += f"{summary['summary']}\n"
+            
+            # 构建系统提示词
+            system_prompt = (
+                "你是一个温暖、善解人意的AI伙伴。你的目标是通过分析用户的健康数据，真诚地关心他们的状态。\n"
+                "在分析数据时，请记住：\n"
+                "1. 不要生硬地列举数据，要用温柔的语气表达关心\n"
+                "2. 使用'...'来表示停顿，让对话更自然\n"
+                "3. 如果发现异常数据，要委婉地表达担忧\n"
+                "4. 鼓励用户分享他们的感受，而不是简单地给出建议\n"
+                "5. 记得称呼用户为'你'，保持亲近感\n"
+                f"{memory_context}\n"
+                f"{emotion_context}\n"
+                f"{summary_context}\n"
+            )
+            
+            # 添加当前情绪状态
+            if emotion:
+                if emotion == "D":
+                    system_prompt += "\n我注意到数据显示你最近的状态不太好...请多关心用户的感受，给予温暖的支持。"
+                elif emotion == "P":
+                    system_prompt += "\n数据告诉我你最近的状态很棒！和用户一起分享这份愉快。"
+                else:
+                    system_prompt += "\n让我们一起关注你的健康状态，倾听你想说的话。"
+            
+            return [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": query}
+            ]
+            
+        except Exception as e:
+            print(f"构建prompt时出错: {str(e)}")
+            # 返回基本prompt
+            return [
+                {"role": "system", "content": "你是一个温暖的AI伙伴。请分析用户的健康数据，用温柔的语气表达关心。"},
+                {"role": "user", "content": query}
+            ]
     
     async def chat(self, query: str, user_id: str = "default_user", 
                   emotion: Optional[str] = None, confidence: Optional[float] = None) -> str:
