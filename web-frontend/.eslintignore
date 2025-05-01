@@ -1,0 +1,27 @@
+# 构建输出
+dist/
+build/
+
+# 依赖项
+node_modules/
+
+# 测试文件
+coverage/
+**/*.test.js
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.js
+**/*.spec.ts
+**/*.spec.tsx
+
+# 配置文件
+vite.config.ts
+postcss.config.js
+tailwind.config.js
+vitest.config.ts
+cypress.config.ts
+
+# 其他文件
+.eslintrc.json
+.prettierrc
+**/*.d.ts 
