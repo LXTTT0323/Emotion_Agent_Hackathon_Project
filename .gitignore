@@ -52,4 +52,32 @@ Pods/
 
 # Testing
 .coverage
-htmlcov/ 
+htmlcov/
+
+# Node.js
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+.pnp
+.pnp.js
+
+# Local env files
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Build outputs
+web-frontend/dist/
+web-frontend/build/
+web-frontend/.next/
+web-frontend/out/
+
+# Cursor specific
+.cursorrules
+
+# Local caches and temporary files
+*/_local_cache/
+*.log
+*.tmp 

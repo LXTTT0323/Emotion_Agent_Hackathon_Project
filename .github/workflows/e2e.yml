@@ -1,0 +1,41 @@
+name: E2E Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  cypress-run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+          cache: 'npm'
+          cache-dependency-path: 'web-frontend/package-lock.json'
+      
+      - name: Install dependencies
+        run: |
+          cd web-frontend
+          npm ci
+      
+      - name: Start backend
+        run: |
+          pip install -r requirements.txt
+          cd backend
+          python main.py &
+          sleep 5
+      
+      - name: Cypress run
+        uses: cypress-io/github-action@v5
+        with:
+          working-directory: web-frontend
+          start: npm run dev
+          wait-on: 'http://localhost:3000'
+          wait-on-timeout: 60 
